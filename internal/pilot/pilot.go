@@ -1646,7 +1646,11 @@ func (p *Pilot) initAlerts(cfg *config.Config) {
 		// task's still-alive execution row instead of silently dropping the
 		// tracker entry and leaving a live-looking claim behind.
 		alerts.WithExecutionLifecycle(executor.NewExecutionLifecycle(p.store)),
+		alerts.WithActiveAlertStore(p.store),
 	)
+	if err := p.alertEngine.RehydrateActiveAlerts(); err != nil {
+		log.Warn("failed to rehydrate active alerts", slog.Any("error", err))
+	}
 
 	// Wire alerts engine to executor via adapter
 	adapter := alerts.NewEngineAdapter(p.alertEngine)

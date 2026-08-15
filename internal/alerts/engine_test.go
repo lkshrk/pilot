@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/qf-studio/pilot/internal/memory"
 )
 
 // mockChannel is a test mock for the Channel interface
@@ -4057,5 +4059,116 @@ func TestAlertResolutionDisabled(t *testing.T) {
 
 	if got := len(mockCh.getAlerts()); got != 1 {
 		t.Fatalf("dispatched %d alerts, want 1 (resolution disabled)", got)
+	}
+}
+
+type fakeActiveAlertStore struct {
+	mu   sync.Mutex
+	rows map[string]*memory.ActiveAlert
+	err  error
+}
+
+func newFakeActiveAlertStore() *fakeActiveAlertStore {
+	return &fakeActiveAlertStore{rows: make(map[string]*memory.ActiveAlert)}
+}
+
+func (f *fakeActiveAlertStore) UpsertActiveAlert(a *memory.ActiveAlert) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.rows[a.Key] = a
+	return nil
+}
+
+func (f *fakeActiveAlertStore) DeleteActiveAlert(key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.rows, key)
+	return nil
+}
+
+func (f *fakeActiveAlertStore) LoadActiveAlerts() ([]*memory.ActiveAlert, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*memory.ActiveAlert, 0, len(f.rows))
+	for _, r := range f.rows {
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (f *fakeActiveAlertStore) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.rows)
+}
+
+func newPersistingEngine(store ActiveAlertStore) (*Engine, *mockChannel) {
+	config := &AlertConfig{
+		Enabled:  true,
+		Channels: []ChannelConfig{{Name: "test-channel", Type: "webhook", Enabled: true}},
+		Rules: []AlertRule{{
+			Name:     "config-error",
+			Type:     AlertTypeServiceUnhealthy,
+			Enabled:  true,
+			Severity: SeverityWarning,
+		}},
+	}
+	ch := newMockChannel("test-channel", "webhook")
+	d := NewDispatcher(config)
+	d.RegisterChannel(ch)
+	return NewEngine(config, WithDispatcher(d), WithActiveAlertStore(store)), ch
+}
+
+func TestActiveAlertSurvivesRestart(t *testing.T) {
+	store := newFakeActiveAlertStore()
+
+	first, _ := newPersistingEngine(store)
+	fireConfigError(first, "adapter:github")
+	if store.count() != 1 {
+		t.Fatalf("persisted rows = %d, want 1", store.count())
+	}
+
+	second, ch := newPersistingEngine(store)
+	if err := second.RehydrateActiveAlerts(); err != nil {
+		t.Fatalf("rehydrate: %v", err)
+	}
+
+	fireConfigHealthy(second, "adapter:github")
+
+	got := ch.getAlerts()
+	if len(got) != 1 {
+		t.Fatalf("dispatched %d alerts after restart, want 1 resolution", len(got))
+	}
+	if !got[0].IsResolution() {
+		t.Error("dispatched alert is not a resolution")
+	}
+	if store.count() != 0 {
+		t.Errorf("persisted rows after resolve = %d, want 0", store.count())
+	}
+}
+
+func TestRehydrateWithoutStoreIsNoop(t *testing.T) {
+	engine, ch := newResolutionTestEngine(t, nil, 0)
+	if err := engine.RehydrateActiveAlerts(); err != nil {
+		t.Fatalf("rehydrate: %v", err)
+	}
+	fireConfigHealthy(engine, "adapter:github")
+	if len(ch.getAlerts()) != 0 {
+		t.Error("expected silence with no active alert")
+	}
+}
+
+func TestPersistFailureDoesNotBlockAlerting(t *testing.T) {
+	store := newFakeActiveAlertStore()
+	store.err = errors.New("disk on fire")
+
+	engine, ch := newPersistingEngine(store)
+	fireConfigError(engine, "adapter:github")
+
+	if len(ch.getAlerts()) != 1 {
+		t.Fatalf("alert was not dispatched despite store failure: %d", len(ch.getAlerts()))
 	}
 }
