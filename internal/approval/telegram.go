@@ -55,11 +55,9 @@ type MessageResult struct {
 
 // TelegramHandler handles approval requests via Telegram
 type TelegramHandler struct {
-	client TelegramClient
-	chatID string
-	// messageThreadID is the forum topic configured alongside chatID. It is
-	// only ever applied to chatID itself — see threadFor.
-	messageThreadID int64
+	client          TelegramClient
+	chatID          string
+	messageThreadID int64                        // forum topic; applied to chatID only, see threadFor
 	pending         map[string]*telegramPending  // requestID -> pending state
 	resolved        map[string]*telegramResolved // requestID -> approved decision (for a later merge follow-up)
 	mu              sync.RWMutex
@@ -147,11 +145,7 @@ func (h *TelegramHandler) resolveDestChatID(req *Request) string {
 	return h.chatID
 }
 
-// threadFor returns the configured forum topic for dest, or 0 when dest is not
-// the configured chat. An approver override (see resolveDestChatID) is usually
-// a private chat, where a topic id the operator configured for the group chat
-// would make the Bot API reject the send with "message thread not found" —
-// dropping the approval prompt entirely instead of merely misplacing it.
+// 0 for an approver override: a group's topic id in a private chat is rejected.
 func (h *TelegramHandler) threadFor(dest string) int64 {
 	if dest != h.chatID {
 		return 0

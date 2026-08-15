@@ -133,8 +133,7 @@ type TelegramChannel struct {
 	messageThreadID int64
 }
 
-// NewTelegramChannel creates a new Telegram alert channel. messageThreadID targets
-// a forum topic; 0 means no topic.
+// NewTelegramChannel creates a new Telegram alert channel
 func NewTelegramChannel(name string, client *telegram.Client, chatID, messageThreadID int64) *TelegramChannel {
 	return &TelegramChannel{
 		name:            name,

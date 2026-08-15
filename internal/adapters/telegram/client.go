@@ -282,8 +282,7 @@ func (c *Client) Verify(ctx context.Context) error {
 	return nil
 }
 
-// SendMessage sends a message to a chat. messageThreadID targets a forum topic;
-// 0 means no topic.
+// SendMessage sends a message to a chat
 func (c *Client) SendMessage(ctx context.Context, chatID, text, parseMode string, messageThreadID int64) (*SendMessageResponse, error) {
 	req := SendMessageRequest{
 		ChatID:          chatID,
@@ -328,8 +327,7 @@ func (c *Client) SendMessage(ctx context.Context, chatID, text, parseMode string
 	return &result, nil
 }
 
-// SendMessageWithKeyboard sends a message with an inline keyboard. messageThreadID
-// targets a forum topic; 0 means no topic.
+// SendMessageWithKeyboard sends a message with an inline keyboard
 func (c *Client) SendMessageWithKeyboard(ctx context.Context, chatID, text, parseMode string, keyboard [][]InlineKeyboardButton, messageThreadID int64) (*SendMessageResponse, error) {
 	req := SendMessageRequest{
 		ChatID:          chatID,

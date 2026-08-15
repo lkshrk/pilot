@@ -33,8 +33,6 @@ func (m *TelegramMessenger) parseMode() string {
 	return "Markdown"
 }
 
-// parseThreadID converts a messenger thread ID into a Telegram message_thread_id.
-// Empty or unparseable values mean "no forum topic".
 func parseThreadID(threadID string) int64 {
 	id, err := strconv.ParseInt(threadID, 10, 64)
 	if err != nil {

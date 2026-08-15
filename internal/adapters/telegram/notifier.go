@@ -14,7 +14,7 @@ type Config struct {
 	Enabled         bool   `yaml:"enabled"`
 	BotToken        string `yaml:"bot_token"`
 	ChatID          string `yaml:"chat_id"`
-	MessageThreadID int64  `yaml:"message_thread_id"` // Forum topic to post notifications into (0 = General / non-forum chat)
+	MessageThreadID int64  `yaml:"message_thread_id"` // forum topic; 0 = General
 
 	Polling       bool                   `yaml:"polling"`         // Enable inbound polling
 	SDKBridge     bool                   `yaml:"sdk_bridge"`      // GH-3470: drive inbound via the studio-sdk chat bridge instead of the local long-poll loop (opt-in; default off)
