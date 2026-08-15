@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -94,14 +95,29 @@ type InlineKeyboardButton struct {
 
 // Message represents a Telegram message
 type Message struct {
-	MessageID int64        `json:"message_id"`
-	From      *User        `json:"from,omitempty"`
-	Chat      *Chat        `json:"chat"`
-	Date      int64        `json:"date"`
-	Text      string       `json:"text,omitempty"`
-	Photo     []*PhotoSize `json:"photo,omitempty"`
-	Voice     *Voice       `json:"voice,omitempty"`
-	Caption   string       `json:"caption,omitempty"`
+	MessageID int64 `json:"message_id"`
+	// MessageThreadID is set for supergroup thread messages generally, not only
+	// forum topics — IsTopicMessage is what distinguishes the two.
+	MessageThreadID int64        `json:"message_thread_id,omitempty"`
+	IsTopicMessage  bool         `json:"is_topic_message,omitempty"`
+	From            *User        `json:"from,omitempty"`
+	Chat            *Chat        `json:"chat"`
+	Date            int64        `json:"date"`
+	Text            string       `json:"text,omitempty"`
+	Photo           []*PhotoSize `json:"photo,omitempty"`
+	Voice           *Voice       `json:"voice,omitempty"`
+	Caption         string       `json:"caption,omitempty"`
+}
+
+// topicThreadID returns the forum topic a message belongs to, as a comms
+// ThreadID, or "" when the message is not in a topic. sendMessage only accepts
+// message_thread_id for forum supergroups, so echoing back the thread id of an
+// ordinary supergroup reply chain would make the reply fail rather than thread.
+func (m *Message) topicThreadID() string {
+	if m == nil || !m.IsTopicMessage || m.MessageThreadID == 0 {
+		return ""
+	}
+	return strconv.FormatInt(m.MessageThreadID, 10)
 }
 
 // Voice represents a voice message
