@@ -254,7 +254,8 @@ type SlackChannelConfig struct {
 
 // TelegramChannelConfig for Telegram alerts
 type TelegramChannelConfig struct {
-	ChatID int64 `yaml:"chat_id"`
+	ChatID          int64 `yaml:"chat_id"`
+	MessageThreadID int64 `yaml:"message_thread_id"` // Forum topic to post alerts into (0 = General / non-forum chat)
 }
 
 // EmailChannelConfig for email alerts

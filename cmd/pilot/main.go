@@ -982,7 +982,7 @@ Examples:
 						telegramClient := telegram.NewClient(cfg.Adapters.Telegram.BotToken)
 						for _, ch := range alertsCfg.Channels {
 							if ch.Type == "telegram" && ch.Telegram != nil {
-								telegramChannel := alerts.NewTelegramChannel(ch.Name, telegramClient, ch.Telegram.ChatID)
+								telegramChannel := alerts.NewTelegramChannel(ch.Name, telegramClient, ch.Telegram.ChatID, ch.Telegram.MessageThreadID)
 								alertsDispatcher.RegisterChannel(telegramChannel)
 							}
 						}
@@ -2989,7 +2989,7 @@ func runPollingMode(cmd *cobra.Command, cfg *config.Config, projectPath string, 
 			telegramClient := telegram.NewClient(cfg.Adapters.Telegram.BotToken)
 			for _, ch := range alertsCfg.Channels {
 				if ch.Type == "telegram" && ch.Telegram != nil {
-					telegramChannel := alerts.NewTelegramChannel(ch.Name, telegramClient, ch.Telegram.ChatID)
+					telegramChannel := alerts.NewTelegramChannel(ch.Name, telegramClient, ch.Telegram.ChatID, ch.Telegram.MessageThreadID)
 					alertsDispatcher.RegisterChannel(telegramChannel)
 				}
 			}
