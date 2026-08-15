@@ -12,7 +12,7 @@ type IncomingMessage struct {
 	SenderID   string      // user ID (string; adapters convert int64)
 	SenderName string      // display name (optional; for logging/notifications)
 	Text       string      // normalized message text
-	ThreadID   string      // thread context (Slack threadTS, Telegram reply, etc.)
+	ThreadID   string      // thread context (Slack threadTS, Telegram forum topic id, etc.)
 	Platform   string      // source adapter: "telegram", "slack", "discord"
 	GuildID    string      // Discord server/guild ID (empty on other platforms)
 	Timestamp  time.Time   // message creation time (zero value if unavailable)
@@ -55,7 +55,7 @@ type PendingTask struct {
 	TaskID      string
 	Description string
 	ContextID   string // chatID or channelID
-	ThreadID    string // threadTS or empty
+	ThreadID    string // Slack threadTS or Telegram forum topic id; empty otherwise
 	MessageRef  string // platform message ID for later updates
 	SenderID    string // user who requested the task (for RBAC)
 	CreatedAt   time.Time
