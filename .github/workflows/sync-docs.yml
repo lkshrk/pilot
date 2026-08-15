@@ -1,11 +1,10 @@
 name: Sync Docs to GitLab
 
+# Fork: the push trigger is removed — this pushes docs to the upstream GitLab
+# mirror using secrets.GITLAB_SSH_KEY, which this fork does not have, so every
+# docs change on main would fail the run. Dispatch-only keeps it available if
+# the secret is ever configured.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - '.github/workflows/sync-docs.yml'
   workflow_dispatch:
 
 jobs:

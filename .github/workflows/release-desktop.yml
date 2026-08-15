@@ -1,9 +1,10 @@
 name: Release Desktop
 
+# Fork: the tag trigger is removed. The desktop app is a 3-runner Wails matrix
+# (macOS/Windows/Linux + NSIS) that this fork does not consume, and it would run
+# on every fork release tag. Dispatch it explicitly if a desktop build is wanted.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
