@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -45,10 +46,11 @@ func NewClientWithBaseURL(botToken, baseURL string) *Client {
 
 // SendMessageRequest represents a Telegram sendMessage request
 type SendMessageRequest struct {
-	ChatID      string                `json:"chat_id"`
-	Text        string                `json:"text"`
-	ParseMode   string                `json:"parse_mode,omitempty"`
-	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
+	ChatID          string                `json:"chat_id"`
+	Text            string                `json:"text"`
+	ParseMode       string                `json:"parse_mode,omitempty"`
+	MessageThreadID int64                 `json:"message_thread_id,omitempty"`
+	ReplyMarkup     *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
 }
 
 // SendMessageResponse represents the response from sending a message
@@ -93,14 +95,23 @@ type InlineKeyboardButton struct {
 
 // Message represents a Telegram message
 type Message struct {
-	MessageID int64        `json:"message_id"`
-	From      *User        `json:"from,omitempty"`
-	Chat      *Chat        `json:"chat"`
-	Date      int64        `json:"date"`
-	Text      string       `json:"text,omitempty"`
-	Photo     []*PhotoSize `json:"photo,omitempty"`
-	Voice     *Voice       `json:"voice,omitempty"`
-	Caption   string       `json:"caption,omitempty"`
+	MessageID       int64        `json:"message_id"`
+	MessageThreadID int64        `json:"message_thread_id,omitempty"`
+	IsTopicMessage  bool         `json:"is_topic_message,omitempty"`
+	From            *User        `json:"from,omitempty"`
+	Chat            *Chat        `json:"chat"`
+	Date            int64        `json:"date"`
+	Text            string       `json:"text,omitempty"`
+	Photo           []*PhotoSize `json:"photo,omitempty"`
+	Voice           *Voice       `json:"voice,omitempty"`
+	Caption         string       `json:"caption,omitempty"`
+}
+
+func (m *Message) topicThreadID() string {
+	if m == nil || !m.IsTopicMessage || m.MessageThreadID == 0 {
+		return ""
+	}
+	return strconv.FormatInt(m.MessageThreadID, 10)
 }
 
 // Voice represents a voice message
@@ -282,11 +293,12 @@ func (c *Client) Verify(ctx context.Context) error {
 }
 
 // SendMessage sends a message to a chat
-func (c *Client) SendMessage(ctx context.Context, chatID, text, parseMode string) (*SendMessageResponse, error) {
+func (c *Client) SendMessage(ctx context.Context, chatID, text, parseMode string, messageThreadID int64) (*SendMessageResponse, error) {
 	req := SendMessageRequest{
-		ChatID:    chatID,
-		Text:      text,
-		ParseMode: parseMode,
+		ChatID:          chatID,
+		Text:            text,
+		ParseMode:       parseMode,
+		MessageThreadID: messageThreadID,
 	}
 
 	body, err := json.Marshal(req)
@@ -326,11 +338,12 @@ func (c *Client) SendMessage(ctx context.Context, chatID, text, parseMode string
 }
 
 // SendMessageWithKeyboard sends a message with an inline keyboard
-func (c *Client) SendMessageWithKeyboard(ctx context.Context, chatID, text, parseMode string, keyboard [][]InlineKeyboardButton) (*SendMessageResponse, error) {
+func (c *Client) SendMessageWithKeyboard(ctx context.Context, chatID, text, parseMode string, keyboard [][]InlineKeyboardButton, messageThreadID int64) (*SendMessageResponse, error) {
 	req := SendMessageRequest{
-		ChatID:    chatID,
-		Text:      text,
-		ParseMode: parseMode,
+		ChatID:          chatID,
+		Text:            text,
+		ParseMode:       parseMode,
+		MessageThreadID: messageThreadID,
 		ReplyMarkup: &InlineKeyboardMarkup{
 			InlineKeyboard: keyboard,
 		},
@@ -525,7 +538,7 @@ type BriefMessageResponse struct {
 // SendBriefMessage sends a message and returns a simplified response for brief delivery.
 // This method satisfies the briefs.TelegramSender interface.
 func (c *Client) SendBriefMessage(ctx context.Context, chatID, text, parseMode string) (*BriefMessageResponse, error) {
-	resp, err := c.SendMessage(ctx, chatID, text, parseMode)
+	resp, err := c.SendMessage(ctx, chatID, text, parseMode, 0)
 	if err != nil {
 		return nil, err
 	}
