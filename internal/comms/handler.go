@@ -853,7 +853,7 @@ func (h *Handler) executeTaskCore(ctx context.Context, contextID, threadID, task
 		if reason == "" {
 			reason = "no action needed"
 		}
-		_ = h.messenger.SendText(ctx, contextID, fmt.Sprintf("⏸ No changes needed: %s\n%s", taskID, reason))
+		_ = h.messenger.SendText(ctx, contextID, threadID, fmt.Sprintf("⏸ No changes needed: %s\n%s", taskID, reason))
 		return
 	}
 
