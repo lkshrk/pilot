@@ -420,6 +420,19 @@ func (s *Store) migrate() error {
 		// uses (repickBackoffKey) rather than split columns, so the
 		// persistence layer stays a pure key/value mirror of the in-memory
 		// entries with no re-derivation logic on either side.
+		`CREATE TABLE IF NOT EXISTS active_alerts (
+			key TEXT PRIMARY KEY,
+			rule_name TEXT NOT NULL,
+			alert_id TEXT NOT NULL,
+			alert_type TEXT NOT NULL,
+			severity TEXT NOT NULL,
+			title TEXT,
+			message TEXT,
+			source TEXT NOT NULL,
+			project_path TEXT,
+			channels TEXT,
+			created_at TIMESTAMP NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS repick_backoff (
 			key TEXT PRIMARY KEY,
 			consecutive_drops INTEGER NOT NULL DEFAULT 0,
