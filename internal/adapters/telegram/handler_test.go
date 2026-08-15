@@ -1689,8 +1689,6 @@ func TestStripBotMention(t *testing.T) {
 	}
 }
 
-// threadRecordingMessenger records the threadID handed to every outbound call
-// that accepts one, so a dropped assignment on the inbound path is visible.
 type threadRecordingMessenger struct {
 	noopMessenger
 	mu       sync.Mutex

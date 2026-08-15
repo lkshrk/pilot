@@ -95,9 +95,7 @@ type InlineKeyboardButton struct {
 
 // Message represents a Telegram message
 type Message struct {
-	MessageID int64 `json:"message_id"`
-	// MessageThreadID is set for supergroup thread messages generally, not only
-	// forum topics — IsTopicMessage is what distinguishes the two.
+	MessageID       int64        `json:"message_id"`
 	MessageThreadID int64        `json:"message_thread_id,omitempty"`
 	IsTopicMessage  bool         `json:"is_topic_message,omitempty"`
 	From            *User        `json:"from,omitempty"`
@@ -109,10 +107,7 @@ type Message struct {
 	Caption         string       `json:"caption,omitempty"`
 }
 
-// topicThreadID returns the forum topic a message belongs to, as a comms
-// ThreadID, or "" when the message is not in a topic. sendMessage only accepts
-// message_thread_id for forum supergroups, so echoing back the thread id of an
-// ordinary supergroup reply chain would make the reply fail rather than thread.
+// Empty outside a forum topic: sendMessage rejects an ordinary thread id.
 func (m *Message) topicThreadID() string {
 	if m == nil || !m.IsTopicMessage || m.MessageThreadID == 0 {
 		return ""
