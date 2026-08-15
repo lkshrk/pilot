@@ -371,6 +371,7 @@ func (h *Handler) processUpdate(ctx context.Context, update *Update) {
 			SenderID:   senderID,
 			SenderName: senderName,
 			Text:       text,
+			ThreadID:   msg.topicThreadID(),
 			Platform:   "telegram",
 			Timestamp:  time.Now(),
 		})
@@ -399,6 +400,7 @@ func (h *Handler) handleCallback(ctx context.Context, callback *CallbackQuery) {
 			h.commsHandler.HandleMessage(ctx, &comms.IncomingMessage{
 				ContextID:  chatID,
 				SenderID:   senderID,
+				ThreadID:   callback.Message.topicThreadID(),
 				Platform:   "telegram",
 				IsCallback: true,
 				CallbackID: callback.ID,
@@ -414,6 +416,7 @@ func (h *Handler) handleCallback(ctx context.Context, callback *CallbackQuery) {
 			h.commsHandler.HandleMessage(ctx, &comms.IncomingMessage{
 				ContextID:  chatID,
 				SenderID:   senderID,
+				ThreadID:   callback.Message.topicThreadID(),
 				Platform:   "telegram",
 				IsCallback: true,
 				CallbackID: callback.ID,
@@ -453,8 +456,7 @@ func (h *Handler) handleRunCommand(ctx context.Context, chatID, taskIDInput stri
 	if h.commsHandler != nil {
 		if running := h.commsHandler.GetRunningTask(chatID); running != nil {
 			elapsed := time.Since(running.StartedAt).Round(time.Second)
-			_, _ = h.client.SendMessage(ctx, chatID,
-				fmt.Sprintf("⚠️ Already running %s (%s)\n\nUse /stop to cancel it first.", running.TaskID, elapsed), "")
+			_, _ = h.client.SendMessage(ctx, chatID, fmt.Sprintf("⚠️ Already running %s (%s)\n\nUse /stop to cancel it first.", running.TaskID, elapsed), "", 0)
 			return
 		}
 	}
@@ -462,22 +464,19 @@ func (h *Handler) handleRunCommand(ctx context.Context, chatID, taskIDInput stri
 	// Resolve task ID
 	taskInfo := h.resolveTaskID(taskIDInput)
 	if taskInfo == nil {
-		_, _ = h.client.SendMessage(ctx, chatID,
-			fmt.Sprintf("❌ Task %s not found\n\nUse /tasks to see available tasks.", taskIDInput), "")
+		_, _ = h.client.SendMessage(ctx, chatID, fmt.Sprintf("❌ Task %s not found\n\nUse /tasks to see available tasks.", taskIDInput), "", 0)
 		return
 	}
 
 	// Load task description
 	description := h.loadTaskDescription(taskInfo)
 	if description == "" {
-		_, _ = h.client.SendMessage(ctx, chatID,
-			fmt.Sprintf("❌ Could not load task %s", taskInfo.FullID), "")
+		_, _ = h.client.SendMessage(ctx, chatID, fmt.Sprintf("❌ Could not load task %s", taskInfo.FullID), "", 0)
 		return
 	}
 
 	// Notify user
-	_, _ = h.client.SendMessage(ctx, chatID,
-		fmt.Sprintf("🚀 Starting task\n\n%s: %s", taskInfo.FullID, taskInfo.Title), "")
+	_, _ = h.client.SendMessage(ctx, chatID, fmt.Sprintf("🚀 Starting task\n\n%s: %s", taskInfo.FullID, taskInfo.Title), "", 0)
 
 	// Execute directly via commsHandler
 	if h.commsHandler != nil {
@@ -506,13 +505,13 @@ func (h *Handler) handlePhoto(ctx context.Context, chatID string, msg *Message) 
 		slog.String("chat_id", chatID), slog.Int("width", photo.Width), slog.Int("height", photo.Height))
 
 	// Send acknowledgment
-	_, _ = h.client.SendMessage(ctx, chatID, "📷 Processing image...", "")
+	_, _ = h.client.SendMessage(ctx, chatID, "📷 Processing image...", "", 0)
 
 	// Download the image
 	imagePath, err := h.downloadImage(ctx, photo.FileID)
 	if err != nil {
 		logging.WithComponent("telegram").Warn("Failed to download image", slog.Any("error", err))
-		_, _ = h.client.SendMessage(ctx, chatID, "❌ Failed to download image. Please try again.", "")
+		_, _ = h.client.SendMessage(ctx, chatID, "❌ Failed to download image. Please try again.", "", 0)
 		return
 	}
 	defer func() {
@@ -554,7 +553,7 @@ func (h *Handler) handleVoice(ctx context.Context, chatID string, msg *Message) 
 	if h.transcriber == nil {
 		logging.WithComponent("telegram").Debug("Voice message received but transcription not configured")
 		msg := h.voiceNotAvailableMessage()
-		_, _ = h.client.SendMessage(ctx, chatID, msg, "")
+		_, _ = h.client.SendMessage(ctx, chatID, msg, "", 0)
 		return
 	}
 
@@ -563,13 +562,13 @@ func (h *Handler) handleVoice(ctx context.Context, chatID string, msg *Message) 
 		slog.String("chat_id", chatID), slog.Int("duration", voice.Duration))
 
 	// Send acknowledgment
-	_, _ = h.client.SendMessage(ctx, chatID, "🎤 Transcribing voice message...", "")
+	_, _ = h.client.SendMessage(ctx, chatID, "🎤 Transcribing voice message...", "", 0)
 
 	// Download the voice file
 	audioPath, err := h.downloadAudio(ctx, voice.FileID)
 	if err != nil {
 		logging.WithComponent("telegram").Warn("Failed to download voice", slog.Any("error", err))
-		_, _ = h.client.SendMessage(ctx, chatID, "❌ Failed to download voice message. Please try again.", "")
+		_, _ = h.client.SendMessage(ctx, chatID, "❌ Failed to download voice message. Please try again.", "", 0)
 		return
 	}
 	defer func() {
@@ -583,14 +582,12 @@ func (h *Handler) handleVoice(ctx context.Context, chatID string, msg *Message) 
 	result, err := h.transcriber.Transcribe(transcribeCtx, audioPath)
 	if err != nil {
 		logging.WithComponent("telegram").Warn("Transcription failed", slog.Any("error", err))
-		_, _ = h.client.SendMessage(ctx, chatID,
-			"❌ Failed to transcribe voice message. Please try again or send as text.", "")
+		_, _ = h.client.SendMessage(ctx, chatID, "❌ Failed to transcribe voice message. Please try again or send as text.", "", 0)
 		return
 	}
 
 	if result.Text == "" {
-		_, _ = h.client.SendMessage(ctx, chatID,
-			"🤷 Couldn't understand the voice message. Please try again or send as text.", "")
+		_, _ = h.client.SendMessage(ctx, chatID, "🤷 Couldn't understand the voice message. Please try again or send as text.", "", 0)
 		return
 	}
 
@@ -601,7 +598,7 @@ func (h *Handler) handleVoice(ctx context.Context, chatID string, msg *Message) 
 	}
 
 	transcriptMsg := fmt.Sprintf("🎤 Transcribed%s:\n%s", langInfo, result.Text)
-	_, _ = h.client.SendMessage(ctx, chatID, transcriptMsg, "")
+	_, _ = h.client.SendMessage(ctx, chatID, transcriptMsg, "", 0)
 
 	// Delegate transcribed text to commsHandler
 	text := strings.TrimSpace(result.Text)
@@ -1194,7 +1191,7 @@ func (h *Handler) sendVoiceSetupPrompt(ctx context.Context, chatID string) {
 	if status.OpenAIKeySet {
 		sb.WriteString("✅ Voice transcription is ready!\n")
 		sb.WriteString("Backend: Whisper API")
-		_, _ = h.client.SendMessage(ctx, chatID, sb.String(), "")
+		_, _ = h.client.SendMessage(ctx, chatID, sb.String(), "", 0)
 		return
 	}
 
@@ -1207,5 +1204,5 @@ func (h *Handler) sendVoiceSetupPrompt(ctx context.Context, chatID string) {
 		{Text: "🔍 Check Status", CallbackData: "voice_check_status"},
 	})
 
-	_, _ = h.client.SendMessageWithKeyboard(ctx, chatID, sb.String(), "", buttons)
+	_, _ = h.client.SendMessageWithKeyboard(ctx, chatID, sb.String(), "", buttons, 0)
 }
