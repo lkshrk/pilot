@@ -1604,6 +1604,34 @@ func truncateDiagnostic(s string, max int) string {
 // parseDeclinedReason extracts the reason from a DECLINED:<reason> marker
 // emitted by Claude when a task is explicitly unactionable. Returns the reason
 // and true if found, or ("", false) if no marker is present. GH-2777.
+// declineReasonFromRun reports an explicit first-pass decline: a DECLINED: marker or a success-claiming exit signal.
+func declineReasonFromRun(backendResult *BackendResult, state *progressState) (string, bool) {
+	if backendResult != nil {
+		if reason, ok := parseDeclinedReason(strings.TrimSpace(backendResult.LastAssistantText)); ok {
+			return reason, true
+		}
+	}
+	if state != nil && state.exitSignal && state.exitSignalSuccess {
+		reason := state.exitSignalReason
+		if reason == "" {
+			reason = "executor signalled successful completion with no commit — nothing to change"
+		}
+		return reason, true
+	}
+	return "", false
+}
+
+func markDeclined(result *ExecutionResult, backendResult *BackendResult, reason string) {
+	result.Success = false
+	result.Declined = true
+	result.Error = ""
+	result.DeclinedReason = reason
+	result.Outcome = "declined" // TASK-358
+	if backendResult != nil {
+		backendResult.ErrorType = string(ErrorTypeDeclined)
+	}
+}
+
 func parseDeclinedReason(text string) (string, bool) {
 	const marker = "DECLINED:"
 	idx := strings.Index(text, marker)
@@ -3854,6 +3882,17 @@ retrySucceeded:
 	// before the caller's deferred worktree cleanup can delete them.
 	r.applyGhostSHAGuardWithPreserve(ctx, task, result, executionPath, log)
 
+	// The ghost-SHA no-op failure takes the failed branch below, where the success-branch decline checks never run.
+	if !result.Success && !result.Declined && strings.HasPrefix(result.Error, "no new commit produced") {
+		if reason, ok := declineReasonFromRun(backendResult, state); ok {
+			markDeclined(result, backendResult, reason)
+			log.Warn("Task declined by executor",
+				slog.String("task_id", task.ID),
+				slog.String("reason", reason),
+			)
+		}
+	}
+
 	// GH-4670: post-run GitHub side-effect audit — detective backstop for the
 	// GH-4649 incident class. Runs regardless of result.Success (a session
 	// that failed its actual task could still have mutated a sibling issue)
@@ -3902,7 +3941,18 @@ retrySucceeded:
 		r.metricsRecorder.RecordExecution(model, outcomeLabel)
 	}
 
-	if !result.Success {
+	if result.Declined {
+		r.reportProgress(task.ID, "Declined", 100, "Task declined: "+result.DeclinedReason)
+		r.saveLogEntry(task.LogExecutionID(), "info", "Task declined: "+result.DeclinedReason)
+		r.persistBackendDiagnostics(task.LogExecutionID(), backendResult)
+		if recorder != nil {
+			recorder.SetModel(result.ModelName)
+			recorder.SetNavigator(state.hasNavigator)
+			if finErr := recorder.Finish("declined"); finErr != nil {
+				log.Warn("Failed to finish recording", slog.Any("error", finErr))
+			}
+		}
+	} else if !result.Success {
 		log.Error("Task execution failed",
 			slog.String("error", result.Error),
 			slog.Duration("duration", duration),

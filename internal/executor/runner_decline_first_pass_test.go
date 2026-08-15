@@ -24,6 +24,77 @@ func (b *decliningBackend) Execute(_ context.Context, _ ExecuteOptions) (*Backen
 	}, nil
 }
 
+type ghostSHANoOpBackend struct {
+	baseSHA string
+	calls   atomic.Int32
+}
+
+func (b *ghostSHANoOpBackend) Name() string      { return "ghost-sha-noop" }
+func (b *ghostSHANoOpBackend) IsAvailable() bool { return true }
+
+func (b *ghostSHANoOpBackend) Execute(_ context.Context, opts ExecuteOptions) (*BackendResult, error) {
+	b.calls.Add(1)
+	if opts.EventHandler != nil {
+		opts.EventHandler(BackendEvent{
+			Type:       EventTypeToolResult,
+			ToolResult: "[main " + b.baseSHA[:7] + "] chore: prior commit inspected",
+		})
+		opts.EventHandler(BackendEvent{
+			Type:    EventTypeText,
+			Message: "Checked the watch ticket. No state change upstream.\n{\"v\":2,\"type\":\"exit\",\"exit_signal\":true,\"success\":true,\"reason\":\"watch ticket unchanged, no commit needed\"}",
+		})
+	}
+	return &BackendResult{
+		Success:           true,
+		Output:            "No commit made — correct outcome for a watch ticket with no state change.",
+		LastAssistantText: "No commit made — correct outcome for a watch ticket with no state change.",
+	}, nil
+}
+
+func TestRunner_GhostSHANoOpWithExitSignal_ClassifiesAsDecline(t *testing.T) {
+	localRepo, remoteRepo := setupTestRepoWithRemote(t)
+	defer func() { _ = os.RemoveAll(localRepo) }()
+	defer func() { _ = os.RemoveAll(remoteRepo) }()
+
+	backend := &ghostSHANoOpBackend{baseSHA: headSHA(t, localRepo)}
+	runner := NewRunnerWithBackend(backend)
+	runner.config = &BackendConfig{UseWorktree: false}
+	runner.SetSkipPreflightChecks(true)
+	runner.SetRecordingEnabled(false)
+
+	task := &Task{
+		ID:          "GH-4875-3",
+		Title:       "check a watch-only ticket via ghost-SHA path",
+		Description: "harvested SHA is the base HEAD; model signals a bare exit success",
+		ProjectPath: localRepo,
+		Branch:      "pilot/GH-4875-3",
+		CreatePR:    true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	result, err := runner.Execute(ctx, task)
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result == nil || !result.Declined {
+		t.Fatalf("expected declined result on the ghost-SHA no-op path, got %+v", result)
+	}
+	if result.Success {
+		t.Error("declined result must not report Success")
+	}
+	if result.Error != "" {
+		t.Errorf("declined result must not carry the ghost-SHA failure Error, got %q", result.Error)
+	}
+	if result.DeclinedReason != "watch ticket unchanged, no commit needed" {
+		t.Errorf("DeclinedReason = %q, want the bare exit signal's reason", result.DeclinedReason)
+	}
+	if got := backend.calls.Load(); got != 1 {
+		t.Errorf("backend invoked %d times, want 1", got)
+	}
+}
+
 type exitSignalNoOpBackend struct {
 	calls atomic.Int32
 }
