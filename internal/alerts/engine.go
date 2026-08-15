@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/qf-studio/pilot/internal/executor"
+	"github.com/qf-studio/pilot/internal/memory"
 )
 
 // Engine is the core alerting engine that processes events and triggers alerts
@@ -28,6 +29,8 @@ type Engine struct {
 	alertHistory        []AlertHistory
 	retryTracker        map[string]int       // source (issue/PR) -> consecutive failure count (GH-848)
 	retryLastSeen       map[string]time.Time // source -> last failure time, for TTL eviction (TASK-357 E7)
+	activeAlerts        map[string]*activeAlert
+	activeStore         ActiveAlertStore
 
 	// Channels for events. priorityCh carries high-severity events
 	// (escalation / OOM / budget / security) on a dedicated buffer so a flood of
@@ -105,6 +108,7 @@ type Event struct {
 	Phase     string
 	Progress  int
 	Error     string
+	Source    string // e.g. "adapter:github"; keys active-alert state when TaskID is empty
 	Metadata  map[string]string
 	Timestamp time.Time
 	// test-only: set by flushForTest to drain the event queue
@@ -142,6 +146,8 @@ const (
 	// credential (e.g. a GitHub token) fails an authenticated validation
 	// call at startup, so a dead credential doesn't fail silently.
 	EventTypeConfigError EventType = "config_error"
+
+	EventTypeConfigHealthy EventType = "config_healthy"
 
 	// Release missing events (GH-3952): fired when a merged pilot/GH-* PR
 	// did not produce its expected release tag, so a stalled release
@@ -207,6 +213,18 @@ func WithLogger(logger *slog.Logger) EngineOption {
 }
 
 // WithDispatcher sets the dispatcher
+type ActiveAlertStore interface {
+	UpsertActiveAlert(*memory.ActiveAlert) error
+	DeleteActiveAlert(key string) error
+	LoadActiveAlerts() ([]*memory.ActiveAlert, error)
+}
+
+func WithActiveAlertStore(store ActiveAlertStore) EngineOption {
+	return func(e *Engine) {
+		e.activeStore = store
+	}
+}
+
 func WithDispatcher(d *Dispatcher) EngineOption {
 	return func(e *Engine) {
 		e.dispatcher = d
@@ -263,6 +281,7 @@ func NewEngine(config *AlertConfig, opts ...EngineOption) *Engine {
 		taskLastProgress:    make(map[string]progressState),
 		alertHistory:        make([]AlertHistory, 0),
 		retryTracker:        make(map[string]int),
+		activeAlerts:        make(map[string]*activeAlert),
 		retryLastSeen:       make(map[string]time.Time),
 		eventCh:             make(chan Event, 100),
 		priorityCh:          make(chan Event, 100),
@@ -438,6 +457,8 @@ func (e *Engine) handleEvent(ctx context.Context, event Event) {
 		e.handleSecurityEvent(ctx, event)
 	case EventTypeConfigError:
 		e.handleConfigError(ctx, event)
+	case EventTypeConfigHealthy:
+		e.handleConfigHealthy(ctx, event)
 	case EventTypeReleaseMissing:
 		e.handleReleaseMissing(ctx, event)
 	case EventTypeLaneStarvation:
@@ -630,6 +651,16 @@ func (e *Engine) handleSecurityEvent(ctx context.Context, event Event) {
 	}
 }
 
+type activeAlert struct {
+	rule     AlertRule
+	alert    *Alert
+	channels []string
+}
+
+func activeAlertKey(ruleName, source string) string {
+	return ruleName + "|" + source
+}
+
 // handleConfigError fires AlertTypeServiceUnhealthy rules when a resolved
 // credential fails validation (GH-3718), e.g. a dead GitHub token detected at
 // startup. Message comes from event.Error, set by the caller.
@@ -640,9 +671,103 @@ func (e *Engine) handleConfigError(ctx context.Context, event Event) {
 		}
 		if rule.Type == AlertTypeServiceUnhealthy && e.shouldFire(rule) {
 			alert := e.createAlert(rule, event, event.Error)
+			e.markActive(rule, alert)
 			e.fireAlert(ctx, rule, alert)
 		}
 	}
+}
+
+func (e *Engine) markActive(rule AlertRule, alert *Alert) {
+	if !e.config.Defaults.ResolveNotificationsEnabled() || alert.Source == "" {
+		return
+	}
+	channels := e.resolveChannels(rule, alert)
+	key := activeAlertKey(rule.Name, alert.Source)
+
+	e.mu.Lock()
+	e.activeAlerts[key] = &activeAlert{
+		rule:     rule,
+		alert:    alert,
+		channels: channels,
+	}
+	store := e.activeStore
+	e.mu.Unlock()
+
+	if store == nil {
+		return
+	}
+	if err := store.UpsertActiveAlert(&memory.ActiveAlert{
+		Key:         key,
+		RuleName:    rule.Name,
+		AlertID:     alert.ID,
+		AlertType:   string(alert.Type),
+		Severity:    string(alert.Severity),
+		Title:       alert.Title,
+		Message:     alert.Message,
+		Source:      alert.Source,
+		ProjectPath: alert.ProjectPath,
+		Channels:    channels,
+		CreatedAt:   alert.CreatedAt,
+	}); err != nil {
+		e.logger.Warn("failed to persist active alert", "rule", rule.Name, "source", alert.Source, "error", err)
+	}
+}
+
+func (e *Engine) handleConfigHealthy(ctx context.Context, event Event) {
+	if !e.config.Defaults.ResolveNotificationsEnabled() || event.Source == "" {
+		return
+	}
+	for _, rule := range e.config.Rules {
+		if !rule.Enabled || rule.Type != AlertTypeServiceUnhealthy {
+			continue
+		}
+		key := activeAlertKey(rule.Name, event.Source)
+
+		e.mu.Lock()
+		active, ok := e.activeAlerts[key]
+		if ok {
+			delete(e.activeAlerts, key)
+		}
+		e.mu.Unlock()
+
+		if !ok {
+			continue
+		}
+		if e.activeStore != nil {
+			if err := e.activeStore.DeleteActiveAlert(key); err != nil {
+				e.logger.Warn("failed to clear persisted active alert", "key", key, "error", err)
+			}
+		}
+		e.dispatchResolution(ctx, active)
+	}
+}
+
+func (e *Engine) dispatchResolution(ctx context.Context, active *activeAlert) {
+	now := time.Now()
+	active.alert.ResolvedAt = &now
+
+	resolution := &Alert{
+		ID:          fmt.Sprintf("%s-resolved", active.alert.ID),
+		Type:        active.alert.Type,
+		Severity:    SeverityInfo,
+		Title:       active.alert.Title,
+		Message:     active.alert.Message,
+		Source:      active.alert.Source,
+		ProjectPath: active.alert.ProjectPath,
+		Metadata:    active.alert.Metadata,
+		CreatedAt:   active.alert.CreatedAt,
+		ResolvedAt:  &now,
+	}
+
+	e.metrics.RecordFired(active.rule.Name, string(resolution.Severity))
+	if e.dispatcher == nil {
+		e.logger.Warn("no dispatcher configured, resolution not sent",
+			"rule", active.rule.Name,
+			"alert_id", resolution.ID,
+		)
+		return
+	}
+	e.enqueueDispatch(ctx, active.rule, resolution, active.channels)
 }
 
 // handleReleaseMissing fires AlertTypeReleaseMissing rules when a merged PR
@@ -992,8 +1117,8 @@ func (e *Engine) shouldFire(rule AlertRule) bool {
 
 // createAlert creates an alert from a rule and event
 func (e *Engine) createAlert(rule AlertRule, event Event, message string) *Alert {
-	source := ""
-	if event.TaskID != "" {
+	source := event.Source
+	if source == "" && event.TaskID != "" {
 		source = fmt.Sprintf("task:%s", event.TaskID)
 	}
 
@@ -1068,20 +1193,26 @@ func (e *Engine) fireAlert(ctx context.Context, rule AlertRule, alert *Alert) {
 		return
 	}
 
-	// Determine which channels to send to
-	channels := rule.Channels
-	if len(channels) == 0 {
-		// Send to all channels that accept this severity
-		for _, ch := range e.config.Channels {
-			if ch.Enabled && e.channelAcceptsSeverity(ch, alert.Severity) {
-				channels = append(channels, ch.Name)
-			}
+	e.enqueueDispatch(ctx, rule, alert, e.resolveChannels(rule, alert))
+}
+
+func (e *Engine) resolveChannels(rule AlertRule, alert *Alert) []string {
+	if len(rule.Channels) > 0 {
+		return rule.Channels
+	}
+	var channels []string
+	for _, ch := range e.config.Channels {
+		if ch.Enabled && e.channelAcceptsSeverity(ch, alert.Severity) {
+			channels = append(channels, ch.Name)
 		}
 	}
+	return channels
+}
 
-	// E1: once running, hand delivery to the background worker so a slow/hung
-	// channel can never block the event loop. Before Start() (direct callers /
-	// tests) deliver inline so the path stays synchronous.
+// E1: once running, hand delivery to the background worker so a slow/hung
+// channel can never block the event loop. Before Start() (direct callers /
+// tests) deliver inline so the path stays synchronous.
+func (e *Engine) enqueueDispatch(ctx context.Context, rule AlertRule, alert *Alert, channels []string) {
 	if !e.started.Load() {
 		e.dispatchAndRecord(ctx, rule, alert, channels)
 		return
@@ -1380,4 +1511,34 @@ func (e *Engine) AlertSnapshot() AlertMetricsSnapshot {
 	snap := e.metrics.Snapshot()
 	snap.QueueDepth = len(e.eventCh)
 	return snap
+}
+
+func (e *Engine) RehydrateActiveAlerts() error {
+	if e.activeStore == nil {
+		return nil
+	}
+	stored, err := e.activeStore.LoadActiveAlerts()
+	if err != nil {
+		return err
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, s := range stored {
+		e.activeAlerts[s.Key] = &activeAlert{
+			rule: AlertRule{Name: s.RuleName, Type: AlertType(s.AlertType)},
+			alert: &Alert{
+				ID:          s.AlertID,
+				Type:        AlertType(s.AlertType),
+				Severity:    Severity(s.Severity),
+				Title:       s.Title,
+				Message:     s.Message,
+				Source:      s.Source,
+				ProjectPath: s.ProjectPath,
+				CreatedAt:   s.CreatedAt,
+			},
+			channels: s.Channels,
+		}
+	}
+	return nil
 }

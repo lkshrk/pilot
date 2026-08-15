@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/qf-studio/pilot/internal/memory"
 )
 
 // mockChannel is a test mock for the Channel interface
@@ -3897,5 +3899,276 @@ func TestParseAlertTypeEvalRegression(t *testing.T) {
 	result := parseAlertType("eval_regression")
 	if result != AlertTypeEvalRegression {
 		t.Errorf("parseAlertType(\"eval_regression\") = %s, want %s", result, AlertTypeEvalRegression)
+	}
+}
+
+func newResolutionTestEngine(t *testing.T, severities []Severity, cooldown time.Duration) (*Engine, *mockChannel) {
+	t.Helper()
+	config := &AlertConfig{
+		Enabled: true,
+		Channels: []ChannelConfig{
+			{Name: "test-channel", Type: "webhook", Enabled: true, Severities: severities},
+		},
+		Rules: []AlertRule{
+			{
+				Name:     "config-error",
+				Type:     AlertTypeServiceUnhealthy,
+				Enabled:  true,
+				Severity: SeverityWarning,
+				Cooldown: cooldown,
+			},
+		},
+	}
+
+	mockCh := newMockChannel("test-channel", "webhook")
+	dispatcher := NewDispatcher(config)
+	dispatcher.RegisterChannel(mockCh)
+	return NewEngine(config, WithDispatcher(dispatcher)), mockCh
+}
+
+func fireConfigError(e *Engine, source string) {
+	e.handleConfigError(context.Background(), Event{
+		Type:      EventTypeConfigError,
+		Source:    source,
+		Error:     source + " verification failed",
+		Timestamp: time.Now(),
+	})
+}
+
+func fireConfigHealthy(e *Engine, source string) {
+	e.handleConfigHealthy(context.Background(), Event{
+		Type:      EventTypeConfigHealthy,
+		Source:    source,
+		Timestamp: time.Now(),
+	})
+}
+
+func TestAlertResolution(t *testing.T) {
+	tests := []struct {
+		name       string
+		severities []Severity
+		cooldown   time.Duration
+		run        func(e *Engine)
+		wantAlerts int
+		wantLast   func(t *testing.T, alerts []*Alert)
+	}{
+		{
+			name: "healthy event with no active alert is silent",
+			run: func(e *Engine) {
+				fireConfigHealthy(e, "adapter:github")
+			},
+			wantAlerts: 0,
+		},
+		{
+			name: "fire then resolve emits one resolution carrying ResolvedAt",
+			run: func(e *Engine) {
+				fireConfigError(e, "adapter:github")
+				fireConfigHealthy(e, "adapter:github")
+			},
+			wantAlerts: 2,
+			wantLast: func(t *testing.T, alerts []*Alert) {
+				last := alerts[len(alerts)-1]
+				if last.ResolvedAt == nil {
+					t.Error("resolution has nil ResolvedAt")
+				}
+				if !last.IsResolution() {
+					t.Error("IsResolution() = false")
+				}
+				if last.Severity != SeverityInfo {
+					t.Errorf("severity = %q, want info", last.Severity)
+				}
+			},
+		},
+		{
+			name: "resolving clears active state so a regression alerts again",
+			run: func(e *Engine) {
+				fireConfigError(e, "adapter:github")
+				fireConfigHealthy(e, "adapter:github")
+				fireConfigError(e, "adapter:github")
+			},
+			wantAlerts: 3,
+			wantLast: func(t *testing.T, alerts []*Alert) {
+				if alerts[len(alerts)-1].ResolvedAt != nil {
+					t.Error("re-fired alert should not be a resolution")
+				}
+			},
+		},
+		{
+			name:     "cooldown does not suppress the resolution",
+			cooldown: time.Hour,
+			run: func(e *Engine) {
+				fireConfigError(e, "adapter:github")
+				fireConfigHealthy(e, "adapter:github")
+			},
+			wantAlerts: 2,
+		},
+		{
+			name: "two sources under one rule resolve independently",
+			run: func(e *Engine) {
+				fireConfigError(e, "adapter:github")
+				fireConfigError(e, "adapter:linear")
+				fireConfigHealthy(e, "adapter:github")
+			},
+			wantAlerts: 3,
+			wantLast: func(t *testing.T, alerts []*Alert) {
+				last := alerts[len(alerts)-1]
+				if last.Source != "adapter:github" {
+					t.Errorf("resolved source = %q, want adapter:github", last.Source)
+				}
+			},
+		},
+		{
+			name:       "resolution reaches the original channels despite an info-excluding filter",
+			severities: []Severity{SeverityWarning, SeverityCritical},
+			run: func(e *Engine) {
+				fireConfigError(e, "adapter:github")
+				fireConfigHealthy(e, "adapter:github")
+			},
+			wantAlerts: 2,
+			wantLast: func(t *testing.T, alerts []*Alert) {
+				if !alerts[len(alerts)-1].IsResolution() {
+					t.Error("channel did not receive the resolution")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine, mockCh := newResolutionTestEngine(t, tt.severities, tt.cooldown)
+			tt.run(engine)
+
+			got := mockCh.getAlerts()
+			if len(got) != tt.wantAlerts {
+				t.Fatalf("dispatched %d alerts, want %d", len(got), tt.wantAlerts)
+			}
+			if tt.wantLast != nil {
+				tt.wantLast(t, got)
+			}
+		})
+	}
+}
+
+func TestAlertResolutionDisabled(t *testing.T) {
+	engine, mockCh := newResolutionTestEngine(t, nil, 0)
+	disabled := false
+	engine.config.Defaults.NotifyOnResolve = &disabled
+
+	fireConfigError(engine, "adapter:github")
+	fireConfigHealthy(engine, "adapter:github")
+
+	if got := len(mockCh.getAlerts()); got != 1 {
+		t.Fatalf("dispatched %d alerts, want 1 (resolution disabled)", got)
+	}
+}
+
+type fakeActiveAlertStore struct {
+	mu   sync.Mutex
+	rows map[string]*memory.ActiveAlert
+	err  error
+}
+
+func newFakeActiveAlertStore() *fakeActiveAlertStore {
+	return &fakeActiveAlertStore{rows: make(map[string]*memory.ActiveAlert)}
+}
+
+func (f *fakeActiveAlertStore) UpsertActiveAlert(a *memory.ActiveAlert) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.rows[a.Key] = a
+	return nil
+}
+
+func (f *fakeActiveAlertStore) DeleteActiveAlert(key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.rows, key)
+	return nil
+}
+
+func (f *fakeActiveAlertStore) LoadActiveAlerts() ([]*memory.ActiveAlert, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*memory.ActiveAlert, 0, len(f.rows))
+	for _, r := range f.rows {
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (f *fakeActiveAlertStore) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.rows)
+}
+
+func newPersistingEngine(store ActiveAlertStore) (*Engine, *mockChannel) {
+	config := &AlertConfig{
+		Enabled:  true,
+		Channels: []ChannelConfig{{Name: "test-channel", Type: "webhook", Enabled: true}},
+		Rules: []AlertRule{{
+			Name:     "config-error",
+			Type:     AlertTypeServiceUnhealthy,
+			Enabled:  true,
+			Severity: SeverityWarning,
+		}},
+	}
+	ch := newMockChannel("test-channel", "webhook")
+	d := NewDispatcher(config)
+	d.RegisterChannel(ch)
+	return NewEngine(config, WithDispatcher(d), WithActiveAlertStore(store)), ch
+}
+
+func TestActiveAlertSurvivesRestart(t *testing.T) {
+	store := newFakeActiveAlertStore()
+
+	first, _ := newPersistingEngine(store)
+	fireConfigError(first, "adapter:github")
+	if store.count() != 1 {
+		t.Fatalf("persisted rows = %d, want 1", store.count())
+	}
+
+	second, ch := newPersistingEngine(store)
+	if err := second.RehydrateActiveAlerts(); err != nil {
+		t.Fatalf("rehydrate: %v", err)
+	}
+
+	fireConfigHealthy(second, "adapter:github")
+
+	got := ch.getAlerts()
+	if len(got) != 1 {
+		t.Fatalf("dispatched %d alerts after restart, want 1 resolution", len(got))
+	}
+	if !got[0].IsResolution() {
+		t.Error("dispatched alert is not a resolution")
+	}
+	if store.count() != 0 {
+		t.Errorf("persisted rows after resolve = %d, want 0", store.count())
+	}
+}
+
+func TestRehydrateWithoutStoreIsNoop(t *testing.T) {
+	engine, ch := newResolutionTestEngine(t, nil, 0)
+	if err := engine.RehydrateActiveAlerts(); err != nil {
+		t.Fatalf("rehydrate: %v", err)
+	}
+	fireConfigHealthy(engine, "adapter:github")
+	if len(ch.getAlerts()) != 0 {
+		t.Error("expected silence with no active alert")
+	}
+}
+
+func TestPersistFailureDoesNotBlockAlerting(t *testing.T) {
+	store := newFakeActiveAlertStore()
+	store.err = errors.New("disk on fire")
+
+	engine, ch := newPersistingEngine(store)
+	fireConfigError(engine, "adapter:github")
+
+	if len(ch.getAlerts()) != 1 {
+		t.Fatalf("alert was not dispatched despite store failure: %d", len(ch.getAlerts()))
 	}
 }
