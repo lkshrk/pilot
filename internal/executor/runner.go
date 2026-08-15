@@ -370,16 +370,19 @@ type ToolResultContent struct {
 
 // progressState tracks execution phase for compact progress reporting
 type progressState struct {
-	phase        string   // Current phase: Exploring, Implementing, Testing, Committing
-	filesRead    int      // Count of files read
-	filesWrite   int      // Count of files written
-	commands     int      // Count of bash commands
-	hasNavigator bool     // Project has Navigator
-	navPhase     string   // Navigator phase: INIT, RESEARCH, IMPL, VERIFY, COMPLETE
-	navIteration int      // Navigator loop iteration
-	navProgress  int      // Navigator-reported progress
-	exitSignal   bool     // Navigator EXIT_SIGNAL detected
-	commitSHAs   []string // Extracted commit SHAs from git output
+	phase        string // Current phase: Exploring, Implementing, Testing, Committing
+	filesRead    int    // Count of files read
+	filesWrite   int    // Count of files written
+	commands     int    // Count of bash commands
+	hasNavigator bool   // Project has Navigator
+	navPhase     string // Navigator phase: INIT, RESEARCH, IMPL, VERIFY, COMPLETE
+	navIteration int    // Navigator loop iteration
+	navProgress  int    // Navigator-reported progress
+	exitSignal   bool   // Navigator EXIT_SIGNAL detected
+	// A success-claiming exit signal with zero commits classifies as a decline, never done.
+	exitSignalSuccess bool
+	exitSignalReason  string
+	commitSHAs        []string // Extracted commit SHAs from git output
 	// Metrics tracking (TASK-13)
 	tokensInput              int64  // Input tokens used
 	tokensOutput             int64  // Output tokens used
@@ -3991,6 +3994,7 @@ retrySucceeded:
 				finishDeclined := func(declinedReason string) (*ExecutionResult, error) {
 					result.Success = false
 					result.Declined = true
+					result.Error = ""
 					result.DeclinedReason = declinedReason
 					result.Outcome = "declined" // TASK-358
 					if backendResult != nil {
@@ -4017,6 +4021,13 @@ retrySucceeded:
 					if declinedReason, ok := parseDeclinedReason(strings.TrimSpace(backendResult.LastAssistantText)); ok {
 						return finishDeclined(declinedReason)
 					}
+				}
+				if state.exitSignal && state.exitSignalSuccess {
+					reason := state.exitSignalReason
+					if reason == "" {
+						reason = "executor signalled successful completion with no commit — nothing to change"
+					}
+					return finishDeclined(reason)
 				}
 
 				log.Warn("Claude made no commits, retrying with explicit instruction",
@@ -5993,6 +6004,7 @@ func (r *Runner) handleStructuredSignals(taskID string, signals []PilotSignal, s
 
 		case SignalTypeExit:
 			state.exitSignal = true
+			r.captureExitSignalOutcome(signal, state)
 			r.reportProgress(taskID, "Finishing", 95, signal.Message)
 
 		case SignalTypeStagnation:
@@ -6002,11 +6014,26 @@ func (r *Runner) handleStructuredSignals(taskID string, signals []PilotSignal, s
 		// Check for exit signal from any signal type
 		if signal.ExitSignal {
 			state.exitSignal = true
+			r.captureExitSignalOutcome(signal, state)
 			message := signal.Message
 			if message == "" {
 				message = "Exit signal detected"
 			}
 			r.reportProgress(taskID, "Finishing", 92, message)
+		}
+	}
+}
+
+func (r *Runner) captureExitSignalOutcome(signal PilotSignal, state *progressState) {
+	if !signal.Success {
+		return
+	}
+	state.exitSignalSuccess = true
+	if state.exitSignalReason == "" {
+		if signal.Reason != "" {
+			state.exitSignalReason = signal.Reason
+		} else if signal.Message != "" {
+			state.exitSignalReason = signal.Message
 		}
 	}
 }
