@@ -33,7 +33,10 @@ func (c *CommandHandler) HandleCommand(ctx context.Context, chatID, threadID, te
 		return
 	}
 
-	cmd := strings.ToLower(parts[0])
+	cmd, addressed := splitCommandMention(parts[0], c.handler.botUsername)
+	if !addressed {
+		return
+	}
 	args := parts[1:]
 
 	switch cmd {
@@ -667,4 +670,16 @@ func truncateForDisplay(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+func splitCommandMention(token, botUsername string) (string, bool) {
+	cmd, mention, found := strings.Cut(token, "@")
+	cmd = strings.ToLower(cmd)
+	if !found || mention == "" {
+		return cmd, true
+	}
+	if botUsername == "" || strings.EqualFold(mention, botUsername) {
+		return cmd, true
+	}
+	return cmd, false
 }
