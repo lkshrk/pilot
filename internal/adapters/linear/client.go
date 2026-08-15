@@ -441,6 +441,57 @@ func (c *Client) GetLabelByName(ctx context.Context, teamID, labelName string) (
 	return result.IssueLabels.Nodes[0].ID, nil
 }
 
+// ResolveTeamUUID maps a team key to its UUID; a UUID is returned unchanged.
+func (c *Client) ResolveTeamUUID(ctx context.Context, teamRef string) (string, error) {
+	if looksLikeUUID(teamRef) {
+		return teamRef, nil
+	}
+
+	query := `
+		query GetTeamID($teamKey: String!) {
+			teams(filter: { key: { eq: $teamKey } }) {
+				nodes { id key }
+			}
+		}
+	`
+	var result struct {
+		Teams struct {
+			Nodes []struct {
+				ID  string `json:"id"`
+				Key string `json:"key"`
+			} `json:"nodes"`
+		} `json:"teams"`
+	}
+
+	if err := c.Execute(ctx, query, map[string]interface{}{"teamKey": teamRef}, &result); err != nil {
+		return "", err
+	}
+	if len(result.Teams.Nodes) == 0 {
+		return "", fmt.Errorf("team %q not found", teamRef)
+	}
+	return result.Teams.Nodes[0].ID, nil
+}
+
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, r := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			isHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+			if !isHex {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // CreateLabel creates a new label in a team and returns its ID.
 // GH-1351: Used to auto-create pilot status labels (pilot-in-progress, pilot-done, pilot-failed).
 func (c *Client) CreateLabel(ctx context.Context, teamID, labelName, color string) (string, error) {
@@ -466,8 +517,13 @@ func (c *Client) CreateLabel(ctx context.Context, teamID, labelName, color strin
 		} `json:"issueLabelCreate"`
 	}
 
+	teamUUID, err := c.ResolveTeamUUID(ctx, teamID)
+	if err != nil {
+		return "", err
+	}
+
 	if err := c.Execute(ctx, mutation, map[string]interface{}{
-		"teamId": teamID,
+		"teamId": teamUUID,
 		"name":   labelName,
 		"color":  color,
 	}, &result); err != nil {
