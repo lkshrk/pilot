@@ -3986,6 +3986,37 @@ retrySucceeded:
 					slog.Any("error", countErr),
 				)
 			} else if commitCount == 0 {
+				finishDeclined := func(declinedReason string) (*ExecutionResult, error) {
+					result.Success = false
+					result.Declined = true
+					result.DeclinedReason = declinedReason
+					result.Outcome = "declined" // TASK-358
+					if backendResult != nil {
+						backendResult.ErrorType = string(ErrorTypeDeclined)
+					}
+					log.Warn("Task declined by executor",
+						slog.String("task_id", task.ID),
+						slog.String("reason", declinedReason),
+					)
+					r.reportProgress(task.ID, "Declined", 100, "Task declined: "+declinedReason)
+					r.persistBackendDiagnostics(task.LogExecutionID(), backendResult)
+
+					if recorder != nil {
+						recorder.SetModel(result.ModelName)
+						recorder.SetNavigator(state.hasNavigator)
+						if finErr := recorder.Finish("declined"); finErr != nil {
+							log.Warn("Failed to finish recording", slog.Any("error", finErr))
+						}
+					}
+					return result, nil
+				}
+
+				if backendResult != nil {
+					if declinedReason, ok := parseDeclinedReason(strings.TrimSpace(backendResult.LastAssistantText)); ok {
+						return finishDeclined(declinedReason)
+					}
+				}
+
 				log.Warn("Claude made no commits, retrying with explicit instruction",
 					slog.String("task_id", task.ID),
 					slog.String("branch", task.Branch),
@@ -4080,27 +4111,7 @@ Only use DECLINED if implementation is truly impossible or undefined. Do not dec
 					// classifying as a generic no_changes failure. DECLINED avoids
 					// pilot-failed and instead adds pilot-needs-clarification.
 					if declinedReason, ok := parseDeclinedReason(refusal); ok {
-						result.Declined = true
-						result.DeclinedReason = declinedReason
-						result.Outcome = "declined" // TASK-358
-						if backendResult != nil {
-							backendResult.ErrorType = string(ErrorTypeDeclined)
-						}
-						log.Warn("Task declined by executor",
-							slog.String("task_id", task.ID),
-							slog.String("reason", declinedReason),
-						)
-						r.reportProgress(task.ID, "Declined", 100, "Task declined: "+declinedReason)
-						r.persistBackendDiagnostics(task.LogExecutionID(), backendResult)
-
-						if recorder != nil {
-							recorder.SetModel(result.ModelName)
-							recorder.SetNavigator(state.hasNavigator)
-							if finErr := recorder.Finish("declined"); finErr != nil {
-								log.Warn("Failed to finish recording", slog.Any("error", finErr))
-							}
-						}
-						return result, nil
+						return finishDeclined(declinedReason)
 					}
 
 					// GH-4517: before declaring a genuine no_changes no-op, check
