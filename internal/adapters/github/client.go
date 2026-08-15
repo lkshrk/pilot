@@ -1275,13 +1275,26 @@ func (c *Client) GetAuthenticatedUser(ctx context.Context) (*User, error) {
 // dead token can be diagnosed without re-deriving the resolution chain
 // (GH-3718). Pass "" when the source is unknown.
 func (c *Client) Verify(ctx context.Context, tokenSource string) error {
-	if _, err := c.GetAuthenticatedUser(ctx); err != nil {
-		if tokenSource != "" {
-			return fmt.Errorf("github token invalid (source: %s): %w", tokenSource, err)
-		}
-		return fmt.Errorf("github token invalid: %w", err)
+	_, err := c.GetAuthenticatedUser(ctx)
+	if err == nil {
+		return nil
 	}
-	return nil
+	// App installation tokens cannot call /user at all, so a failure there is
+	// not evidence of a bad credential until the installation probe also fails.
+	if instErr := c.verifyInstallation(ctx); instErr == nil {
+		return nil
+	}
+	if tokenSource != "" {
+		return fmt.Errorf("github token invalid (source: %s): %w", tokenSource, err)
+	}
+	return fmt.Errorf("github token invalid: %w", err)
+}
+
+func (c *Client) verifyInstallation(ctx context.Context) error {
+	var result struct {
+		TotalCount int `json:"total_count"`
+	}
+	return c.doRequest(ctx, http.MethodGet, "/installation/repositories?per_page=1", nil, &result)
 }
 
 // SearchMergedPRsForIssue checks if any merged PRs exist that reference the given
