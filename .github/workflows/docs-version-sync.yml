@@ -1,9 +1,9 @@
 name: Sync Docs Version
 
+# Fork: the tag trigger is removed so it does not fire on fork release tags —
+# it opens a docs version-bump PR with secrets.PILOT_DOCS_PAT, which this fork
+# does not have.
 on:
-  push:
-    tags:
-      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       version:
