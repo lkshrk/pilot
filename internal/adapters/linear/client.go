@@ -720,3 +720,56 @@ func (c *Client) GetTeamDoneStateID(ctx context.Context, teamKey string) (string
 
 	return stateID, nil
 }
+
+type LabelScope string
+
+const (
+	LabelScopeTeam      LabelScope = "team"
+	LabelScopeWorkspace LabelScope = "workspace"
+	LabelScopeOtherTeam LabelScope = "other-team"
+	LabelScopeMissing   LabelScope = "missing"
+)
+
+func (c *Client) DiagnoseLabelScope(ctx context.Context, teamRef, labelName string) (LabelScope, error) {
+	query := `
+		query DiagnoseLabel($name: String!) {
+			issueLabels(filter: { name: { eq: $name } }) {
+				nodes { id name team { id key } }
+			}
+		}
+	`
+	var result struct {
+		IssueLabels struct {
+			Nodes []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Team *struct {
+					ID  string `json:"id"`
+					Key string `json:"key"`
+				} `json:"team"`
+			} `json:"nodes"`
+		} `json:"issueLabels"`
+	}
+
+	if err := c.Execute(ctx, query, map[string]interface{}{"name": labelName}, &result); err != nil {
+		return LabelScopeMissing, err
+	}
+	if len(result.IssueLabels.Nodes) == 0 {
+		return LabelScopeMissing, nil
+	}
+
+	sawWorkspace := false
+	for _, n := range result.IssueLabels.Nodes {
+		if n.Team == nil {
+			sawWorkspace = true
+			continue
+		}
+		if n.Team.Key == teamRef || n.Team.ID == teamRef {
+			return LabelScopeTeam, nil
+		}
+	}
+	if sawWorkspace {
+		return LabelScopeWorkspace, nil
+	}
+	return LabelScopeOtherTeam, nil
+}
