@@ -1025,8 +1025,12 @@ Examples:
 						// task's still-alive execution row instead of silently dropping
 						// the tracker entry and leaving a live-looking claim behind.
 						gwEngineOpts = append(gwEngineOpts, alerts.WithExecutionLifecycle(executor.NewExecutionLifecycle(gwStore)))
+						gwEngineOpts = append(gwEngineOpts, alerts.WithActiveAlertStore(gwStore))
 					}
 					gwAlertsEngine = alerts.NewEngine(alertsCfg, gwEngineOpts...)
+					if rehydrateErr := gwAlertsEngine.RehydrateActiveAlerts(); rehydrateErr != nil {
+						logging.WithComponent("start").Warn("failed to rehydrate active alerts", slog.Any("error", rehydrateErr))
+					}
 					if alertErr := gwAlertsEngine.Start(ctx); alertErr != nil {
 						logging.WithComponent("start").Error("alert engine failed to start — downstream alerters will be silently disabled; check alerts config", slog.Any("error", alertErr))
 						gwAlertsEngine = nil
@@ -3031,8 +3035,12 @@ func runPollingMode(cmd *cobra.Command, cfg *config.Config, projectPath string, 
 			// task's still-alive execution row instead of silently dropping
 			// the tracker entry and leaving a live-looking claim behind.
 			engineOpts = append(engineOpts, alerts.WithExecutionLifecycle(executor.NewExecutionLifecycle(store)))
+			engineOpts = append(engineOpts, alerts.WithActiveAlertStore(store))
 		}
 		alertsEngine = alerts.NewEngine(alertsCfg, engineOpts...)
+		if err := alertsEngine.RehydrateActiveAlerts(); err != nil {
+			logging.WithComponent("start").Warn("failed to rehydrate active alerts", slog.Any("error", err))
+		}
 		if err := alertsEngine.Start(ctx); err != nil {
 			logging.WithComponent("start").Error("alert engine failed to start — downstream alerters will be silently disabled; check alerts config", slog.Any("error", err))
 			alertsEngine = nil

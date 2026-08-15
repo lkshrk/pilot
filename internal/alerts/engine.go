@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/qf-studio/pilot/internal/executor"
+	"github.com/qf-studio/pilot/internal/memory"
 )
 
 // Engine is the core alerting engine that processes events and triggers alerts
@@ -29,6 +30,7 @@ type Engine struct {
 	retryTracker        map[string]int       // source (issue/PR) -> consecutive failure count (GH-848)
 	retryLastSeen       map[string]time.Time // source -> last failure time, for TTL eviction (TASK-357 E7)
 	activeAlerts        map[string]*activeAlert
+	activeStore         ActiveAlertStore
 
 	// Channels for events. priorityCh carries high-severity events
 	// (escalation / OOM / budget / security) on a dedicated buffer so a flood of
@@ -211,6 +213,18 @@ func WithLogger(logger *slog.Logger) EngineOption {
 }
 
 // WithDispatcher sets the dispatcher
+type ActiveAlertStore interface {
+	UpsertActiveAlert(*memory.ActiveAlert) error
+	DeleteActiveAlert(key string) error
+	LoadActiveAlerts() ([]*memory.ActiveAlert, error)
+}
+
+func WithActiveAlertStore(store ActiveAlertStore) EngineOption {
+	return func(e *Engine) {
+		e.activeStore = store
+	}
+}
+
 func WithDispatcher(d *Dispatcher) EngineOption {
 	return func(e *Engine) {
 		e.dispatcher = d
@@ -668,13 +682,34 @@ func (e *Engine) markActive(rule AlertRule, alert *Alert) {
 		return
 	}
 	channels := e.resolveChannels(rule, alert)
+	key := activeAlertKey(rule.Name, alert.Source)
 
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.activeAlerts[activeAlertKey(rule.Name, alert.Source)] = &activeAlert{
+	e.activeAlerts[key] = &activeAlert{
 		rule:     rule,
 		alert:    alert,
 		channels: channels,
+	}
+	store := e.activeStore
+	e.mu.Unlock()
+
+	if store == nil {
+		return
+	}
+	if err := store.UpsertActiveAlert(&memory.ActiveAlert{
+		Key:         key,
+		RuleName:    rule.Name,
+		AlertID:     alert.ID,
+		AlertType:   string(alert.Type),
+		Severity:    string(alert.Severity),
+		Title:       alert.Title,
+		Message:     alert.Message,
+		Source:      alert.Source,
+		ProjectPath: alert.ProjectPath,
+		Channels:    channels,
+		CreatedAt:   alert.CreatedAt,
+	}); err != nil {
+		e.logger.Warn("failed to persist active alert", "rule", rule.Name, "source", alert.Source, "error", err)
 	}
 }
 
@@ -697,6 +732,11 @@ func (e *Engine) handleConfigHealthy(ctx context.Context, event Event) {
 
 		if !ok {
 			continue
+		}
+		if e.activeStore != nil {
+			if err := e.activeStore.DeleteActiveAlert(key); err != nil {
+				e.logger.Warn("failed to clear persisted active alert", "key", key, "error", err)
+			}
 		}
 		e.dispatchResolution(ctx, active)
 	}
@@ -1471,4 +1511,34 @@ func (e *Engine) AlertSnapshot() AlertMetricsSnapshot {
 	snap := e.metrics.Snapshot()
 	snap.QueueDepth = len(e.eventCh)
 	return snap
+}
+
+func (e *Engine) RehydrateActiveAlerts() error {
+	if e.activeStore == nil {
+		return nil
+	}
+	stored, err := e.activeStore.LoadActiveAlerts()
+	if err != nil {
+		return err
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, s := range stored {
+		e.activeAlerts[s.Key] = &activeAlert{
+			rule: AlertRule{Name: s.RuleName, Type: AlertType(s.AlertType)},
+			alert: &Alert{
+				ID:          s.AlertID,
+				Type:        AlertType(s.AlertType),
+				Severity:    Severity(s.Severity),
+				Title:       s.Title,
+				Message:     s.Message,
+				Source:      s.Source,
+				ProjectPath: s.ProjectPath,
+				CreatedAt:   s.CreatedAt,
+			},
+			channels: s.Channels,
+		}
+	}
+	return nil
 }
