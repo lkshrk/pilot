@@ -65,9 +65,11 @@ adapters:
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     chat_id: "${TELEGRAM_CHAT_ID}"    # Your user/chat ID for notifications
     # Forum supergroups only (groups with Topics enabled): post task lifecycle
-    # notifications into one topic instead of General. The id is the topic's
-    # message_thread_id — the middle segment of a topic message link
-    # (https://t.me/c/<chat>/<topic>/<msg>). Omit or 0 for non-forum chats.
+    # notifications and approval prompts into one topic instead of General.
+    # The id is the topic's message_thread_id — the middle segment of a topic
+    # message link (https://t.me/c/<chat>/<topic>/<msg>). Omit or 0 for
+    # non-forum chats. Approval prompts addressed to an individual approver
+    # (approvers[0] is a chat id) ignore this and go to that chat directly.
     # message_thread_id: 12
     transcription:
       provider: openai

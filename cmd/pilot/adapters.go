@@ -44,8 +44,8 @@ type telegramApprovalAdapter struct {
 	client *telegram.Client
 }
 
-func (a *telegramApprovalAdapter) SendMessageWithKeyboard(ctx context.Context, chatID, text, parseMode string, keyboard [][]approval.InlineKeyboardButton) (*approval.MessageResponse, error) {
-	resp, err := a.client.SendMessageWithKeyboard(ctx, chatID, text, parseMode, convertKeyboardToTelegram(keyboard), 0)
+func (a *telegramApprovalAdapter) SendMessageWithKeyboard(ctx context.Context, chatID, text, parseMode string, keyboard [][]approval.InlineKeyboardButton, messageThreadID int64) (*approval.MessageResponse, error) {
+	resp, err := a.client.SendMessageWithKeyboard(ctx, chatID, text, parseMode, convertKeyboardToTelegram(keyboard), messageThreadID)
 	if err != nil {
 		return nil, err
 	}
