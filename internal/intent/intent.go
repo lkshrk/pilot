@@ -25,6 +25,8 @@ var greetingPatterns = []string{
 	"hi", "hello", "hey", "hola", "привет", "yo", "sup",
 	"good morning", "good afternoon", "good evening",
 	"howdy", "greetings", "what's up", "whats up",
+	"moin", "hallo", "servus",
+	"guten morgen", "guten tag", "guten abend",
 }
 
 // Question indicators
