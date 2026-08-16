@@ -82,16 +82,28 @@ func signalPollerRegistration() PollerRegistration {
 				}
 			}
 
-			handler.SetCommsHandler(comms.BuildHandler(comms.HandlerDeps{
+			projects := config.NewProjectSource(deps.Cfg)
+			commsHandler := comms.BuildHandler(comms.HandlerDeps{
 				Messenger:       messenger,
 				Runner:          deps.Runner,
-				Projects:        config.NewProjectSource(deps.Cfg),
+				Projects:        projects,
 				ProjectPath:     deps.ProjectPath,
 				Bot:             botCfg,
 				Store:           deps.Store,
 				TaskIDPrefix:    "SIGNAL",
 				ExecutorBackend: deps.Cfg.Executor,
-			}))
+			})
+			handler.SetCommsHandler(commsHandler)
+
+			// Without a sink a vote is only logged, so an approval poll would be
+			// a display object that no answer can decide.
+			handler.SetVoteSink(signalcli.NewApprovalRouter(commsHandler, messenger, &signalcli.ApprovalConfig{
+				Approvers:        cfg.Approvers,
+				ProjectApprovers: cfg.ProjectApprovers,
+				SelfUUID:         cfg.SelfUUID,
+				Projects:         projects,
+				Logger:           log,
+			}).Sink())
 
 			deps.SafeAdapterGo(ctx, "signal", func() {
 				if err := handler.StartListening(ctx); err != nil {
