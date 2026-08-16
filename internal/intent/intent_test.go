@@ -25,6 +25,10 @@ func TestDetectIntent(t *testing.T) {
 		{"greeting hi there", "hi there", IntentGreeting},
 		{"greeting привет", "привет", IntentGreeting},
 		{"greeting yo", "yo", IntentGreeting},
+		{"greeting moin", "moin", IntentGreeting},
+		{"greeting hallo", "hallo", IntentGreeting},
+		{"greeting servus", "servus", IntentGreeting},
+		{"greeting guten morgen", "guten morgen", IntentGreeting},
 
 		// Questions
 		{"question with ?", "what is the auth handler?", IntentQuestion},
@@ -165,6 +169,11 @@ func TestStartsWithGreeting(t *testing.T) {
 		{"good afternoon, quick question", true},
 		{"привет, как дела", true},
 		{"yo, what's the status?", true},
+		{"moin", true},
+		{"moin moin", true},
+		{"hallo, wie geht's?", true},
+		{"servus! alles klar?", true},
+		{"guten morgen, kurze frage", true},
 
 		// NOT greetings
 		{"what is the auth handler?", false},
