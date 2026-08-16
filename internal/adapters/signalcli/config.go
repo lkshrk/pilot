@@ -25,6 +25,19 @@ type Config struct {
 	// without it self-filtering is skipped.
 	SelfUUID string `yaml:"self_uuid"`
 
+	// Approvers narrows who may approve. Empty keeps group membership as the
+	// boundary, which is what Groups already documents; a non-empty list means
+	// only these Signal UUIDs can decide a poll, and everyone else's vote is
+	// refused. Voters are identified by UUID because that is the only identity
+	// a vote envelope carries.
+	Approvers []string `yaml:"approvers"`
+
+	// ProjectApprovers overrides Approvers per project name. A project listed
+	// here is decided only by its own list, so an entry present but empty
+	// approves nothing — writing the key is a deliberate statement, distinct
+	// from omitting it and falling back to Approvers.
+	ProjectApprovers map[string][]string `yaml:"project_approvers"`
+
 	// MaxMessageLength overrides the chunking threshold. Zero uses the module
 	// default, which is conservative rather than API-derived — the API exposes
 	// no limit to read.
