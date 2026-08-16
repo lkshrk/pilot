@@ -69,7 +69,7 @@ func (c *AnthropicClient) Classify(ctx context.Context, messages []ConversationM
 	systemPrompt := `You are an intent classifier for a coding assistant bot. Classify the user's message into exactly one of these intents:
 
 - command: Message starts with /
-- greeting: Simple greeting like "hi", "hello", "hey"
+- greeting: Simple greeting in any language, e.g. "hi", "hello", "hey", "moin", "hallo", "servus", "guten morgen"
 - research: Deep multi-file analysis/research (e.g., "research how X works across the codebase", "analyze the auth flow")
 - planning: Requests for an implementation PLAN before changing code (e.g., "plan how to add X", "design a solution for Y")
 - operational: Queries about live daemon or queue state (e.g., "what's in the queue?", "anything running?", "how many tasks", "status of the queue")
