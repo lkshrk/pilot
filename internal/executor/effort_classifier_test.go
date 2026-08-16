@@ -326,3 +326,24 @@ func TestParseStructuredEffortResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestEffortClassifier_HonoursCustomBaseURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		want    string
+	}{
+		{"unset keeps the public endpoint", "", "https://api.anthropic.com/v1/messages"},
+		{"gateway endpoint is used", "https://gw.example.com", "https://gw.example.com/v1/messages"},
+		{"trailing slash does not double up", "https://gw.example.com/", "https://gw.example.com/v1/messages"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ANTHROPIC_BASE_URL", tt.baseURL)
+			if got := NewEffortClassifier().apiURL; got != tt.want {
+				t.Errorf("apiURL = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
