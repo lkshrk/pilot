@@ -41,17 +41,24 @@ type sender interface {
 type Messenger struct {
 	api sender
 
-	// pending maps a confirmation's messageRef to the group its poll was posted
-	// in. AcknowledgeCallback receives only the ref, but closing a poll needs
-	// the recipient too, and closing on the first vote is what makes an approval
-	// final.
+	// pending maps a confirmation's messageRef to the poll pilot posted for it.
+	// AcknowledgeCallback receives only the ref, but closing a poll needs the
+	// recipient too, and closing on the first vote is what makes an approval
+	// final. The project comes from the same call and is the only place a vote
+	// can learn which project it decides — comms.PendingTask does not carry one.
 	mu      sync.Mutex
-	pending map[string]string
+	pending map[string]pendingPoll
+}
+
+// pendingPoll is an approval poll awaiting its answer.
+type pendingPoll struct {
+	recipient string
+	project   string
 }
 
 // NewMessenger builds a Messenger over the given sender.
 func NewMessenger(api sender) *Messenger {
-	return &Messenger{api: api, pending: make(map[string]string)}
+	return &Messenger{api: api, pending: make(map[string]pendingPoll)}
 }
 
 // recipient normalises a pilot context ID into the form the send endpoints
@@ -87,7 +94,7 @@ func (m *Messenger) SendConfirmation(ctx context.Context, contextID, _ /*threadI
 
 	ref := strconv.FormatInt(ts, 10)
 	m.mu.Lock()
-	m.pending[ref] = to
+	m.pending[ref] = pendingPoll{recipient: to, project: project}
 	m.mu.Unlock()
 	return ref, nil
 }
@@ -131,7 +138,7 @@ func (m *Messenger) SendChunked(ctx context.Context, contextID, _ /*threadID*/, 
 // from a poll, and failing those would turn a no-op into a spurious failure.
 func (m *Messenger) AcknowledgeCallback(ctx context.Context, callbackID string) error {
 	m.mu.Lock()
-	to, ok := m.pending[callbackID]
+	poll, ok := m.pending[callbackID]
 	if ok {
 		delete(m.pending, callbackID)
 	}
@@ -144,15 +151,28 @@ func (m *Messenger) AcknowledgeCallback(ctx context.Context, callbackID string) 
 	if err != nil {
 		return nil
 	}
-	if err := m.api.ClosePoll(ctx, to, ts); err != nil {
+	if err := m.api.ClosePoll(ctx, poll.recipient, ts); err != nil {
 		// Restore it: the approval is not final, and a retry must be able to
 		// find the group again.
 		m.mu.Lock()
-		m.pending[callbackID] = to
+		m.pending[callbackID] = poll
 		m.mu.Unlock()
 		return fmt.Errorf("signalcli: close approval poll: %w", err)
 	}
 	return nil
+}
+
+// PendingProject reports the project an outstanding approval poll belongs to.
+//
+// A vote on a ref this does not know is a vote on some other poll in the group —
+// pilot posts no others, but group members do — and must not reach the
+// confirmation path, where an unknown ref would be answered with "No pending
+// task to confirm."
+func (m *Messenger) PendingProject(ref string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	poll, ok := m.pending[ref]
+	return poll.project, ok
 }
 
 // MaxMessageLength reports the chunking threshold.
