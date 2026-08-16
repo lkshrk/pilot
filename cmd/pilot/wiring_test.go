@@ -964,6 +964,7 @@ func TestPollerEnabled_MultipleAdaptersSimultaneously(t *testing.T) {
 		"azuredevops": false,
 		"plane":       false,
 		"github":      false, // no GitHub config in cfg → SDK registration stays off
+		"signal":      false, // no Signal config in cfg → adapter stays off
 	}
 
 	for _, reg := range regs {
