@@ -21,6 +21,7 @@ import (
 	"github.com/qf-studio/pilot/internal/adapters/jira"
 	"github.com/qf-studio/pilot/internal/adapters/linear"
 	"github.com/qf-studio/pilot/internal/adapters/plane"
+	"github.com/qf-studio/pilot/internal/adapters/signalcli"
 	"github.com/qf-studio/pilot/internal/adapters/slack"
 	"github.com/qf-studio/pilot/internal/adapters/telegram"
 	"github.com/qf-studio/pilot/internal/adapters/web"
@@ -154,6 +155,7 @@ type AdaptersConfig struct {
 	Asana       *asana.Config       `yaml:"asana"`
 	Plane       *plane.Config       `yaml:"plane"`
 	Discord     *discord.Config     `yaml:"discord"`
+	Signal      *signalcli.Config   `yaml:"signal"`
 	// Chat configures the web transport for the console Operator chat panel
 	// (GH-4835). Disabled by default; when absent/disabled the gateway
 	// chat routes are not registered at all.
@@ -560,6 +562,7 @@ func DefaultConfig() *Config {
 			Asana:       asana.DefaultConfig(),
 			Plane:       plane.DefaultConfig(),
 			Discord:     discord.DefaultConfig(),
+			Signal:      signalcli.DefaultConfig(),
 			Chat:        web.DefaultConfig(),
 		},
 		Orchestrator: &OrchestratorConfig{
