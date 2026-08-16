@@ -96,6 +96,14 @@ func NewEffortClassifier() *EffortClassifier {
 		}
 	}
 
+	// A gateway credential is only valid at its own gateway, so the endpoint has
+	// to follow the token: sending it to api.anthropic.com is a guaranteed 401
+	// and leaks the credential to a host it does not belong to.
+	if base := os.Getenv("ANTHROPIC_BASE_URL"); base != "" {
+		c.apiURL = strings.TrimSuffix(base, "/") + "/v1/messages"
+		c.log.Info("Effort classifier using custom API endpoint", slog.String("url", c.apiURL))
+	}
+
 	return c
 }
 
