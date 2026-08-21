@@ -33,23 +33,23 @@ var skipDirs = map[string]bool{
 
 // textExts lists file extensions treated as readable text (value false = skip).
 var textExts = map[string]bool{
-	".go":   true,
-	".md":   true,
-	".yaml": true,
-	".yml":  true,
-	".json": true,
-	".ts":   true,
-	".tsx":  true,
-	".js":   true,
-	".jsx":  true,
-	".py":   true,
-	".sh":   true,
-	".toml": true,
-	".mod":  true,
-	".txt":  true,
-	".html": true,
-	".css":  true,
-	".sum":  false, // go.sum — large and unreadable for questions
+	".go":    true,
+	".md":    true,
+	".yaml":  true,
+	".yml":   true,
+	".json":  true,
+	".ts":    true,
+	".tsx":   true,
+	".js":    true,
+	".jsx":   true,
+	".py":    true,
+	".sh":    true,
+	".toml":  true,
+	".mod":   true,
+	".txt":   true,
+	".html":  true,
+	".css":   true,
+	".sum":   false, // go.sum — large and unreadable for questions
 	".pb.go": false,
 }
 

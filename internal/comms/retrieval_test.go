@@ -353,9 +353,9 @@ func TestHandleQuestion_ResponderPath_SkipsRunner(t *testing.T) {
 		retrieval:   RetrievalConfig{Enabled: true, MaxFiles: 8, MaxBytes: 24000},
 	}
 	h := NewHandler(&HandlerConfig{
-		Messenger:   m,
-		Responder:   r,
-		ProjectPath: dir,
+		Messenger:    m,
+		Responder:    r,
+		ProjectPath:  dir,
 		TaskIDPrefix: "TEST",
 	})
 
