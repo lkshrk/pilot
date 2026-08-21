@@ -1633,3 +1633,35 @@ func TestGetOrCreateLabel(t *testing.T) {
 		})
 	}
 }
+
+func TestDiagnoseLabelScope(t *testing.T) {
+	tests := []struct {
+		name  string
+		nodes string
+		want  LabelScope
+	}{
+		{name: "team-scoped by key", nodes: `[{"id":"1","name":"llm-pilot","team":{"id":"u","key":"ROU"}}]`, want: LabelScopeTeam},
+		{name: "workspace-scoped", nodes: `[{"id":"1","name":"llm-pilot","team":null}]`, want: LabelScopeWorkspace},
+		{name: "other team only", nodes: `[{"id":"1","name":"llm-pilot","team":{"id":"u","key":"OTH"}}]`, want: LabelScopeOtherTeam},
+		{name: "missing", nodes: `[]`, want: LabelScopeMissing},
+		{name: "team wins over workspace duplicate", nodes: `[{"id":"1","name":"llm-pilot","team":null},{"id":"2","name":"llm-pilot","team":{"id":"u","key":"ROU"}}]`, want: LabelScopeTeam},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"data":{"issueLabels":{"nodes":` + tt.nodes + `}}}`))
+			}))
+			defer server.Close()
+
+			client := NewClientWithBaseURL("test-linear-key", server.URL)
+			got, err := client.DiagnoseLabelScope(context.Background(), "ROU", "llm-pilot")
+			if err != nil {
+				t.Fatalf("DiagnoseLabelScope: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("scope = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

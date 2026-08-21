@@ -3242,6 +3242,7 @@ func runPollingMode(cmd *cobra.Command, cfg *config.Config, projectPath string, 
 	if cfg.Alerts != nil {
 		startAdapterHealthLoop(ctx, adapterVerifiers, alertsEngine, cfg.Alerts.ResolvedHealthCheckInterval())
 	}
+	checkLinearTriggerLabels(ctx, cfg)
 	registerAdapterReadiness(gwServer, adapterVerifiers, verify.DefaultTimeout)
 
 	// GH-929: Start GitHub polling for multiple repos if enabled
