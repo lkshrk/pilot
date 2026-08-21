@@ -61,6 +61,8 @@ github.com/leaanthony/u v1.1.1 h1:TUFjwDGlNX+WuwVEzDqQwC2lOv0P4uhTQw7CMFdiK7M=
 github.com/leaanthony/u v1.1.1/go.mod h1:9+o6hejoRljvZ3BzdYlVL0JYCwtnAsVuN9pVTQcaRfI=
 github.com/lkshrk/pilot-signal-adapter v0.2.0 h1:v0dCMF4ir5z+aMjZxUrb6kv0TAS+JVMGwNQDK9p+JNA=
 github.com/lkshrk/pilot-signal-adapter v0.2.0/go.mod h1:QuJYszlqf9d2HDfGMxBksrrj5NeEo8rAmJDH6pQCSU0=
+github.com/lkshrk/studio-sdk v0.35.3-fork.1 h1:smsl4IMfg7J98arQnQzjXS2f8nfYk69rczVHytcfWRA=
+github.com/lkshrk/studio-sdk v0.35.3-fork.1/go.mod h1:M/uFBeXsPAtsrO7wiIgE/GgWzfw80ftW6BrQUIOwxUM=
 github.com/lucasb-eyer/go-colorful v1.3.0 h1:2/yBRLdWBZKrf7gB40FoiKfAWYQ0lqNcbuQwVHXptag=
 github.com/lucasb-eyer/go-colorful v1.3.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/matryer/is v1.4.0/go.mod h1:8I/i5uYgLzgsgEloJE1U6xx5HkBQpAZvepWuujKwMRU=
@@ -93,8 +95,6 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/qf-studio/grom v0.2.0 h1:EefLLr794KGk8ihdpKBgJnmSyUc//b/n8zZ77VbeuXY=
 github.com/qf-studio/grom v0.2.0/go.mod h1:YVihqE0treA2091TLNhGWvGi5+vMYv/ZBlAlX7Mr/JI=
-github.com/qf-studio/studio-sdk v0.35.2 h1:ela9pIg9oV3QQywwBhDD9+x1zE+miBqcDg/8wwV6PXc=
-github.com/qf-studio/studio-sdk v0.35.2/go.mod h1:M/uFBeXsPAtsrO7wiIgE/GgWzfw80ftW6BrQUIOwxUM=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=

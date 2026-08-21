@@ -70,3 +70,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/qf-studio/studio-sdk => github.com/lkshrk/studio-sdk v0.35.3-fork.1
