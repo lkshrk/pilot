@@ -70,7 +70,7 @@ func recipient(contextID string) string {
 
 // SendText sends a plain message. threadID is ignored: Signal has no threads.
 func (m *Messenger) SendText(ctx context.Context, contextID, _ /*threadID*/, text string) error {
-	if _, err := m.api.SendText(ctx, recipient(contextID), text); err != nil {
+	if _, err := m.api.SendText(ctx, recipient(contextID), plainText(text)); err != nil {
 		return fmt.Errorf("signalcli: send text: %w", err)
 	}
 	return nil
@@ -120,9 +120,9 @@ func (m *Messenger) SendResult(ctx context.Context, contextID, _ /*threadID*/, t
 
 // SendChunked splits long content at the platform limit.
 func (m *Messenger) SendChunked(ctx context.Context, contextID, _ /*threadID*/, content, prefix string) error {
-	body := content
+	body := plainText(content)
 	if prefix != "" {
-		body = prefix + "\n\n" + content
+		body = plainText(prefix) + "\n\n" + body
 	}
 	if _, err := m.api.SendChunked(ctx, recipient(contextID), body); err != nil {
 		return fmt.Errorf("signalcli: send chunked: %w", err)
