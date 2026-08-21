@@ -95,9 +95,15 @@ func styledInline(line string) string {
 		part = mdImage.ReplaceAllString(part, "$1 ($2)")
 		part = mdLink.ReplaceAllString(part, "$1 ($2)")
 		part = mdStrike.ReplaceAllString(part, "\x00$1\x00")
-		part = mdBoldUnder.ReplaceAllString(part, "**$1**")
-		part = strings.ReplaceAll(part, "~", `\~`)
-		part = strings.ReplaceAll(part, "||", `\|\|`)
+		part = mdBoldUnder.ReplaceAllString(part, "\x01$1\x01\x01")
+		part = mdBoldStars.ReplaceAllString(part, "\x01$1\x01\x01")
+		part = mdEmStars.ReplaceAllString(part, "\x02$1\x02")
+		// Anything still carrying a style character is unpaired; the parser
+		// would silently swallow it, so escape rather than lose it.
+		part = strings.NewReplacer("*", `\*`, "`", "\\`", "~", `\~`, "|", `\|`).Replace(part)
+		part = strings.ReplaceAll(part, "\x01\x01", "**")
+		part = strings.ReplaceAll(part, "\x01", "**")
+		part = strings.ReplaceAll(part, "\x02", "*")
 		part = strings.ReplaceAll(part, "\x00", "~")
 		b.WriteString(part)
 		if i < len(codes) {
