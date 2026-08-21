@@ -36,7 +36,7 @@ func signalPollerRegistration() PollerRegistration {
 				return
 			}
 
-			opts := []signal.SenderOption{}
+			opts := []signal.SenderOption{signal.WithStyledText()}
 			if cfg.MaxMessageLength > 0 {
 				opts = append(opts, signal.WithMaxMessageLength(cfg.MaxMessageLength))
 			}

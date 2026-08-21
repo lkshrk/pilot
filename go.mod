@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/lkshrk/pilot-signal-adapter v0.1.0
+	github.com/lkshrk/pilot-signal-adapter v0.2.0
 	github.com/qf-studio/grom v0.2.0
 	github.com/qf-studio/studio-sdk v0.35.2
 	github.com/robfig/cron/v3 v3.0.1
