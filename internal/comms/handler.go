@@ -839,7 +839,7 @@ func (h *Handler) executeTaskCore(ctx context.Context, contextID, threadID, task
 	execID, lifeErr := lifecycle.Begin(task, executor.ExecStatusRunning)
 	if lifeErr != nil {
 		if errors.Is(lifeErr, executor.ErrClaimLost) {
-			_ = h.messenger.SendText(ctx, contextID, fmt.Sprintf("⚠️ %s is already being executed by another Pilot process.", taskID))
+			_ = h.messenger.SendText(ctx, contextID, threadID, fmt.Sprintf("⚠️ %s is already being executed by another Pilot process.", taskID))
 			if h.runner != nil {
 				h.runner.RemoveProgressCallback(callbackName)
 			}

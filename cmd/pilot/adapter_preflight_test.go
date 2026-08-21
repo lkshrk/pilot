@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -235,5 +237,30 @@ func TestStartAdapterHealthLoopGuards(t *testing.T) {
 			defer cancel()
 			startAdapterHealthLoop(ctx, tt.verifiers, tt.engine, tt.interval)
 		})
+	}
+}
+
+func TestAlertEngineWiringIncludesActiveAlertStore(t *testing.T) {
+	content, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+	src := string(content)
+
+	lifecycle := strings.Count(src, "alerts.WithExecutionLifecycle(")
+	activeStore := strings.Count(src, "alerts.WithActiveAlertStore(")
+	rehydrate := strings.Count(src, "RehydrateActiveAlerts()")
+
+	if lifecycle == 0 {
+		t.Fatal("no alerts.WithExecutionLifecycle call sites found; update this guard")
+	}
+	if activeStore != lifecycle {
+		t.Errorf("alerts.WithActiveAlertStore appears %d times, want %d (one per store-backed engine); "+
+			"an engine built without it silently drops active-alert persistence",
+			activeStore, lifecycle)
+	}
+	if rehydrate != lifecycle {
+		t.Errorf("RehydrateActiveAlerts appears %d times, want %d; a store-backed engine that never "+
+			"rehydrates cannot resolve alerts fired before a restart", rehydrate, lifecycle)
 	}
 }
