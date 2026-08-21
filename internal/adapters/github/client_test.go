@@ -2728,12 +2728,12 @@ func TestExecuteGraphQL(t *testing.T) {
 
 func TestExecuteGraphQLTolerant(t *testing.T) {
 	tests := []struct {
-		name           string
-		response       string
-		wantPartial    bool // want *PartialGraphQLError
-		wantFatal      bool // want a non-partial error
-		errContains    string
-		wantResultKey  string // key that must exist in unmarshalled result when wantPartial
+		name          string
+		response      string
+		wantPartial   bool // want *PartialGraphQLError
+		wantFatal     bool // want a non-partial error
+		errContains   string
+		wantResultKey string // key that must exist in unmarshalled result when wantPartial
 	}{
 		{
 			name:          "partial response: FORBIDDEN node error + good data",
@@ -4136,4 +4136,3 @@ func TestGetTagForSHA_ExhaustivePagination(t *testing.T) {
 		t.Errorf("GetTagForSHA() = %q, want %q", got, targetTag)
 	}
 }
-

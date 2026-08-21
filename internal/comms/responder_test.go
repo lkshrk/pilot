@@ -11,9 +11,9 @@ import (
 
 // mockAnswerer records calls to Answer and returns a canned reply.
 type mockAnswerer struct {
-	reply  string
-	err    error
-	calls  []mockAnswerCall
+	reply string
+	err   error
+	calls []mockAnswerCall
 }
 
 type mockAnswerCall struct {
