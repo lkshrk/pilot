@@ -74,8 +74,7 @@ func signalPollerRegistration() PollerRegistration {
 	}
 }
 
-// signalRateLimitToComms converts signal.RateLimitConfig units to comms.RateLimitConfig.
-// signal uses per-second messages and per-minute tasks; comms uses per-minute and per-hour.
+// Signal config is per-second/per-minute; comms wants per-minute/per-hour.
 func signalRateLimitToComms(rl *signal.RateLimitConfig) *comms.RateLimitConfig {
 	if rl == nil {
 		return nil

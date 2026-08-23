@@ -72,7 +72,7 @@ adapters:
     base_url: "${SIGNAL_BASE_URL}"     # http://localhost:8080
     account: "${SIGNAL_ACCOUNT}"       # +15551234567
     groups:
-      - "group.Q1YyMzQ1Njc4OQ=="       # from GET /v1/groups
+      - "group.Q1YyMzQ1Njc4OQ=="       # from GET /v1/groups/{account}
     self_uuid: "${SIGNAL_SELF_UUID}"
     approvers: []                      # empty = any member of an allowed group
     styled_text: true
@@ -169,7 +169,7 @@ Messages beginning with `/` are parsed as commands; everything else is treated a
 ### Nothing Is Received
 
 1. Confirm the service runs with `MODE=json-rpc` (or `json-rpc-native`) — `native` and `normal` have no receive stream
-2. Confirm `groups` is non-empty; an empty allowlist admits nothing
+2. Confirm `groups` is non-empty. Pilot still prints `● signal bot started`, but the bridge refuses to start and logs `Signal listener error` — the allowlist is the authorization boundary, so an empty one is a hard stop, not a permissive default
 3. Confirm the group ID matches one from `GET /v1/groups/{account}`
 4. Confirm Pilot's number is still a member of the group
 

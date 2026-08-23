@@ -101,10 +101,9 @@ Download the desktop app from the [latest release](https://github.com/qf-studio/
 pilot init
 
 # 2. Start Pilot
-pilot start --github              # GitHub issue polling
+pilot start --github              # GitHub issue polling (Signal joins in when enabled in config)
 pilot start --telegram            # Telegram bot
 pilot start --telegram --github   # Both
-pilot start --github              # Signal rides along when enabled in config
 
 # 3. Create a GitHub issue with 'pilot' label, or message your Telegram bot
 ```
