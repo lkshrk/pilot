@@ -19,6 +19,7 @@ import (
 	"github.com/qf-studio/pilot/internal/adapters/jira"
 	"github.com/qf-studio/pilot/internal/adapters/linear"
 	"github.com/qf-studio/pilot/internal/adapters/plane"
+	"github.com/qf-studio/pilot/internal/adapters/signal"
 	"github.com/qf-studio/pilot/internal/alerts"
 	"github.com/qf-studio/pilot/internal/approval"
 	"github.com/qf-studio/pilot/internal/config"
@@ -263,6 +264,49 @@ func TestPollerEnabled_Plane(t *testing.T) {
 					APIKey:        testutil.FakePlaneAPIKey,
 					WorkspaceSlug: "test-ws",
 					Polling:       &plane.PollingConfig{Enabled: true},
+				},
+			}},
+			enabled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := reg.Enabled(tt.cfg); got != tt.enabled {
+				t.Errorf("Enabled() = %v, want %v", got, tt.enabled)
+			}
+		})
+	}
+}
+
+func TestPollerEnabled_Signal(t *testing.T) {
+	reg := signalPollerRegistration()
+
+	tests := []struct {
+		name    string
+		cfg     *config.Config
+		enabled bool
+	}{
+		{
+			name:    "nil config",
+			cfg:     &config.Config{Adapters: &config.AdaptersConfig{}},
+			enabled: false,
+		},
+		{
+			name: "adapter disabled",
+			cfg: &config.Config{Adapters: &config.AdaptersConfig{
+				Signal: &signal.Config{Enabled: false},
+			}},
+			enabled: false,
+		},
+		{
+			name: "enabled",
+			cfg: &config.Config{Adapters: &config.AdaptersConfig{
+				Signal: &signal.Config{
+					Enabled: true,
+					BaseURL: "http://signal-cli:8080",
+					Account: "+4912345",
+					Groups:  []string{"group.abc"},
 				},
 			}},
 			enabled: true,
@@ -963,6 +1007,7 @@ func TestPollerEnabled_MultipleAdaptersSimultaneously(t *testing.T) {
 		"asana":       false,
 		"azuredevops": false,
 		"plane":       false,
+		"signal":      false,
 		"github":      false, // no GitHub config in cfg → SDK registration stays off
 	}
 
