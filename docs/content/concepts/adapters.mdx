@@ -67,7 +67,7 @@ type IssueResult struct {
 
 ## Supported Adapters
 
-Pilot ships with 9 adapters across three categories: issue trackers, chat platforms, and project boards.
+Pilot ships with 10 adapters across three categories: issue trackers, chat platforms, and project boards.
 
 ### Feature Matrix
 
@@ -82,6 +82,7 @@ Pilot ships with 9 adapters across three categories: issue trackers, chat platfo
 | **Plane** | ✅ | ✅ | String | Issue state | Assignment |
 | **Slack** | ❌ | ✅ | — | — | Message/command |
 | **Discord** | ❌ | ✅ | — | — | Bot command |
+| **Signal** | ❌ | ✅ | UUID | — | Message in an allowed group |
 
 ### Issue Trackers
 
@@ -102,6 +103,8 @@ adapters:
 ### Chat Platforms
 
 **Slack** and **Discord** are inbound-only adapters. They receive messages via Socket Mode (Slack) or Gateway WebSocket (Discord), classify intent, and create GitHub issues for task-type messages. They don't poll — they react to events in real time.
+
+**Signal** is the private-messenger adapter, reached through signal-cli-rest-api in `json-rpc` mode. Signal has no per-channel permission model, so membership of an allowlisted group *is* the authorization boundary — an empty `groups` list admits nothing rather than everything. Confirmations and approvals are native Signal polls, restricted to the UUIDs in `approvers` when that list is set.
 
 ## ProcessedStore
 

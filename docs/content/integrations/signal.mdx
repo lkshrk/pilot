@@ -1,0 +1,193 @@
+import { Callout } from 'nextra/components'
+
+# Signal Integration
+
+Pilot talks to Signal through [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) running in **json-rpc** mode. Messages posted in an allowed Signal group become Pilot tasks, and anything Pilot needs confirmed comes back as a native Signal poll.
+
+Signal has no bot accounts. Pilot uses a **registered Signal number of its own** — a second number you own, or a device linked to an existing account — and joins the groups it should listen to.
+
+## Setup
+
+### 1. Run signal-cli-rest-api
+
+Deploy the service somewhere Pilot can reach it and put it in `json-rpc` mode — that is the mode that exposes the streaming receive endpoint Pilot connects to.
+
+```bash
+docker run -d --name signal-api \
+  -p 8080:8080 \
+  -v $HOME/.local/share/signal-api:/home/.local/share/signal-cli \
+  -e MODE=json-rpc \
+  bbernhard/signal-cli-rest-api:latest
+```
+
+<Callout type="warning">
+`MODE=native` and `MODE=normal` do not serve the `/v1/receive/{account}` stream Pilot subscribes to. Without `json-rpc` Pilot connects, sends fine, and never receives a single message.
+</Callout>
+
+### 2. Register or Link the Account
+
+Either register a fresh number:
+
+```bash
+curl -X POST http://localhost:8080/v1/register/+15551234567
+curl -X POST http://localhost:8080/v1/register/+15551234567/verify/123456
+```
+
+…or link Pilot as a secondary device of an existing account by opening `GET /v1/qrcodelink?device_name=pilot` in a browser and scanning the QR code from **Signal → Settings → Linked devices**.
+
+Verify the account is live:
+
+```bash
+curl http://localhost:8080/v1/accounts
+```
+
+### 3. Add the Account to a Group
+
+Create the group from a Signal client and invite Pilot's number, or create it through the API. Then list the groups the account is in to get their IDs:
+
+```bash
+curl http://localhost:8080/v1/groups/+15551234567
+```
+
+The `id` field comes back in the `group.<base64>` form. Pilot accepts either that form or the raw group ID carried inside received envelopes, so you can paste whichever one you have.
+
+### 4. Find the Account's Own UUID
+
+```bash
+curl http://localhost:8080/v1/accounts/+15551234567 | jq .uuid
+```
+
+This is `self_uuid`. It is optional but strongly recommended — see [Self-Filtering](#self-filtering).
+
+### 5. Configure Pilot
+
+```yaml
+# ~/.pilot/config.yaml
+adapters:
+  signal:
+    enabled: true
+    base_url: "${SIGNAL_BASE_URL}"     # http://localhost:8080
+    account: "${SIGNAL_ACCOUNT}"       # +15551234567
+    groups:
+      - "group.Q1YyMzQ1Njc4OQ=="       # from GET /v1/groups
+    self_uuid: "${SIGNAL_SELF_UUID}"
+    approvers: []                      # empty = any member of an allowed group
+    styled_text: true
+    max_message_length: 0              # 0 = SDK default (2000)
+```
+
+There is no `--signal` CLI flag; the Signal adapter is enabled from config only.
+
+```bash
+pilot start --github
+```
+
+## Configuration Reference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable the Signal adapter |
+| `base_url` | string | required | signal-cli-rest-api service root |
+| `account` | string | required | Registered Signal number Pilot sends and receives as |
+| `groups` | []string | `[]` | Allowed group IDs — **empty admits nothing** |
+| `self_uuid` | string | `""` | Pilot's own Signal UUID; skips its own traffic |
+| `approvers` | []string | `[]` | Signal UUIDs allowed to decide approval polls (empty = any group member) |
+| `styled_text` | bool | `false` | Send with `text_mode: styled` so markers render as styles |
+| `max_message_length` | int | `0` | Chunking threshold; `0` uses the SDK default of 2000 characters |
+
+## How It Works
+
+### Group Allowlist as the Authorization Boundary
+
+Signal has no per-channel permission model to lean on, so **membership of an allowed group is what grants a person access**. Anyone in a listed group can send Pilot tasks and — unless `approvers` narrows it — decide approval polls.
+
+That makes `groups` an authorization boundary, not a noise filter, and it is why an empty list admits nothing rather than everything.
+
+<Callout type="warning">
+This is the opposite of Discord's `allowed_channels`, where empty means *all channels*. If you carry a Discord config's habits over, an empty `groups` will look like a broken adapter — it is Pilot refusing to listen without a boundary configured.
+</Callout>
+
+### Self-Filtering
+
+Pilot's own messages arrive back on the same receive stream as everyone else's. With `self_uuid` set, envelopes from that UUID are dropped. Leave it empty and Pilot can read its own output back as a command — a progress update that happens to look like a request becomes a new task.
+
+Set it.
+
+### Approvals Are Polls
+
+When Pilot needs a decision it posts a **native Signal poll** whose options are the choices. A poll is used rather than a plain message because the vote binds to that specific poll and names the voter, which a free-text "yes" cannot.
+
+- The poll question is the message text, flattened to one line and truncated to Signal's 140-character cap.
+- Signal lets an open poll's answer be changed, so Pilot **closes the poll** once a decision is taken. Closing is what makes the answer final.
+- Votes on polls Pilot did not author are ignored.
+- With a non-empty `approvers` list, a vote from any other UUID is refused: the voter is told once ("Vote ignored — not an approver.") and the poll stays open so a real approver can still decide it.
+
+<Callout type="warning">
+`approvers` is matched by **Signal UUID**, not by phone number or display name. A list of numbers matches nobody and locks every human out of every approval. Read the UUIDs off `GET /v1/accounts` or Pilot's logs before filling it in.
+</Callout>
+
+### Styled Text
+
+Signal has no markdown renderer. With `styled_text: true` Pilot sends `text_mode: styled` and translates agent markdown into Signal's own syntax: `*italic*`, `**bold**`, `` `monospace` ``, `~strikethrough~`, `||spoiler||`. Headings become bold lines, links are flattened to `text (url)`, and characters that would otherwise toggle a style are escaped.
+
+With it off, markdown reaches the group as literal asterisks and backticks.
+
+<Callout type="info">
+Rendering is client-side. An old or third-party Signal client may show the markers verbatim even though the message was sent correctly. Poll questions carry no styling at all and are always sent as plain text.
+</Callout>
+
+### No Threads, No Edits
+
+signal-cli cannot edit a sent message and Signal groups have no threads. Progress updates therefore arrive as **new messages** rather than mutating the original, and long output is split into chunks of `max_message_length` characters.
+
+## Task Flow
+
+1. A group member posts a message in an allowed group
+2. Pilot classifies intent and replies — a chat answer directly, or a poll for anything needing confirmation
+3. A member votes in the poll
+4. Pilot verifies the voter against `approvers` (when set), closes the poll, and dispatches the task
+5. Progress updates arrive as follow-up messages
+6. The result is posted with a PR link
+
+Messages beginning with `/` are parsed as commands; everything else is treated as conversational input.
+
+## Message Formats
+
+| Phase | Format |
+|-------|--------|
+| Confirmation | Poll: task description as the question, actions as options |
+| Progress | New message per update (no in-place edit) |
+| Success | `✅ Task completed` with PR link |
+| Failure | `❌ Task failed` with error summary |
+| Refused vote | `Vote ignored — not an approver.` |
+
+## Troubleshooting
+
+### Nothing Is Received
+
+1. Confirm the service runs with `MODE=json-rpc` — other modes have no receive stream
+2. Confirm `groups` is non-empty; an empty allowlist admits nothing
+3. Confirm the group ID matches one from `GET /v1/groups/{account}`
+4. Confirm Pilot's number is still a member of the group
+
+### Pilot Replies to Itself
+
+`self_uuid` is unset or wrong. Read it from `GET /v1/accounts/{account}` and set it.
+
+### Votes Do Nothing
+
+1. Check whether `approvers` is set and whether the voter's UUID is in it
+2. Votes on polls Pilot did not author are ignored by design — make sure the poll is Pilot's, not one a member created
+3. A closed poll is already decided; Pilot closes each poll as soon as it acts on a vote
+
+### Messages Arrive as Literal Asterisks
+
+`styled_text` is `false`, or the recipient's client does not render styled text. Try a current official Signal client before changing config.
+
+### Long Messages Are Truncated
+
+Signal rejects very long messages and exposes no readable limit, so Pilot chunks at a conservative 2000 characters. Raise `max_message_length` only if your deployment demonstrably accepts more.
+
+### Rate Limits
+
+Neither Signal nor signal-cli-rest-api publishes its limits, and there is no dedicated diagnostic for hitting one. Sustained high-volume sending shows up as send errors in Pilot's logs and, in the worst case, as the account being rate-limited by Signal itself. Keep group volume modest and prefer fewer, larger updates.

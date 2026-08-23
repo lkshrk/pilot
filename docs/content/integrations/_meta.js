@@ -8,5 +8,6 @@ export default {
   plane: "Plane",
   slack: "Slack",
   discord: "Discord",
+  signal: "Signal",
   telegram: "Telegram"
 }

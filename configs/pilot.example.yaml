@@ -218,6 +218,20 @@ adapters:
       history_size: 10                 # Messages to keep per channel for context
       history_ttl: 30m                 # TTL for conversation history
 
+  # Signal - Chat-based task execution via signal-cli-rest-api (json-rpc mode)
+  # Group membership is the authorization boundary: anyone in an allowed group
+  # can send tasks and vote in approval polls, so an empty `groups` admits nothing.
+  signal:
+    enabled: false
+    base_url: "${SIGNAL_BASE_URL}"     # signal-cli-rest-api root, e.g. http://signal-rest-api:8080
+    account: "${SIGNAL_ACCOUNT}"       # Registered Signal number, e.g. +15551234567
+    groups: []                         # Allowed group IDs (empty = nothing admitted)
+      # - "group.Q1YyMzQ1Njc4OQ=="     # "group.<base64>" from GET /v1/groups, or the raw envelope form
+    self_uuid: "${SIGNAL_SELF_UUID}"   # Own Signal UUID; optional, ignores pilot's own traffic
+    approvers: []                      # Signal UUIDs allowed to decide approval polls (empty = any group member)
+    styled_text: true                  # Render *italic*, **bold**, `monospace`, ~strike~, ||spoiler||
+    max_message_length: 0              # Chunking threshold; 0 uses the SDK default (2000)
+
   # Slack - Notifications + Socket Mode chat
   slack:
     enabled: false

@@ -104,6 +104,7 @@ pilot init
 pilot start --github              # GitHub issue polling
 pilot start --telegram            # Telegram bot
 pilot start --telegram --github   # Both
+pilot start --github              # Signal/Slack/Discord ride along when enabled in config
 
 # 3. Create a GitHub issue with 'pilot' label, or message your Telegram bot
 ```
@@ -182,6 +183,7 @@ You label issue "pilot"
 | Feature | Description |
 |---------|-------------|
 | **Telegram Bot** | Chat, research, planning, tasks + voice & images |
+| **Signal Bot** | Group-scoped chat and tasks, approvals as native Signal polls |
 | **GitHub Polling** | Auto-pick issues with `pilot` label |
 | **GitLab / Azure DevOps** | Full polling + webhook adapters |
 | **Linear/Jira/Asana** | Webhooks and task sync |
@@ -373,6 +375,9 @@ pilot start -p ~/Projects/myapp      # Specify project
 pilot start --replace                # Kill existing instance first
 ```
 
+Signal, Slack and Discord have no start flag — enable them in `~/.pilot/config.yaml`
+(`adapters.signal.enabled: true`) and they start with `pilot start`.
+
 ### `pilot task`
 
 ```bash
@@ -421,7 +426,7 @@ pilot patterns search "auth"      # Search by keyword
 │                          PILOT                              │
 ├──────────────┬──────────────────────────────────────────────┤
 │ Gateway      │ HTTP/WebSocket server, routing               │
-│ Adapters     │ Telegram, Slack, GitHub, Jira, Linear, Asana │
+│ Adapters     │ Telegram, Signal, Slack, GitHub, Jira, Linear│
 │ Executor     │ Claude Code process management               │
 │ Orchestrator │ Task planning, phase management              │
 │ Memory       │ SQLite + cross-project knowledge graph       │

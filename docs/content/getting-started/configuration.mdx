@@ -26,6 +26,7 @@ Pilot delegates AI execution to **Claude Code**, which manages its own authentic
 | **Epic decomposition** (Haiku subtask parser) | `ANTHROPIC_API_KEY` env var | No — falls back to regex parser |
 | **Release summaries** (`autopilot.release.generate_summary`, Haiku "What's New") | `ANTHROPIC_API_KEY` env var | No — releases still ship without the summary section |
 | **Discord** | `DISCORD_BOT_TOKEN` env var or `adapters.discord.bot_token` in config | Yes, if using Discord |
+| **Signal** | `SIGNAL_BASE_URL` + `SIGNAL_ACCOUNT` env vars or `adapters.signal.base_url` / `.account` in config | Yes, if using Signal |
 | **Plane** | `PLANE_API_KEY` env var or `adapters.plane.api_key` in config | Yes, if using Plane |
 
 <Callout type="info">
@@ -43,6 +44,9 @@ Pilot delegates AI execution to **Claude Code**, which manages its own authentic
 | `OPENAI_API_KEY` | Enables Whisper voice transcription in Telegram | No |
 | `SLACK_BOT_TOKEN` | Slack bot token for notifications | No |
 | `DISCORD_BOT_TOKEN` | Discord bot token for chat interface | No |
+| `SIGNAL_BASE_URL` | signal-cli-rest-api service root (json-rpc mode) | If using Signal |
+| `SIGNAL_ACCOUNT` | Registered Signal number Pilot sends and receives as | If using Signal |
+| `SIGNAL_SELF_UUID` | Pilot's own Signal UUID, used to ignore its own traffic | No |
 | `PLANE_API_KEY` | Plane.so API key for work item management | No |
 | `PILOT_ALLOW_UNMANAGED_REPO` | Set to `1` to bypass the repo allowlist guardrail (logs WARN) | No |
 
@@ -1608,6 +1612,38 @@ adapters:
 | `command_prefix` | string | — | Prefix for bot commands (e.g. `!pilot`) |
 | `rate_limit.messages_per_second` | int | `5` | Max outgoing messages per second |
 | `rate_limit.tasks_per_minute` | int | `10` | Max tasks accepted per minute |
+
+### Signal
+
+Signal has no bot accounts: Pilot uses a registered number of its own and reaches it through [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) in `json-rpc` mode. Membership of a listed group is what authorizes a person, so an empty `groups` list admits nothing.
+
+```yaml
+adapters:
+  signal:
+    enabled: true
+    base_url: ${SIGNAL_BASE_URL}             # signal-cli-rest-api root, json-rpc mode
+    account: ${SIGNAL_ACCOUNT}               # +15551234567
+    groups:
+      - "group.Q1YyMzQ1Njc4OQ=="             # from GET /v1/groups/{account}
+    self_uuid: ${SIGNAL_SELF_UUID}           # own UUID, ignores pilot's own traffic
+    approvers:
+      - "8f1c9b2e-0000-4a5b-9c3d-2e6f7a8b9c0d"   # Signal UUIDs allowed to decide approvals
+    styled_text: true
+    max_message_length: 0                    # 0 = SDK default (2000)
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable Signal adapter |
+| `base_url` | string | — | signal-cli-rest-api service root (json-rpc mode) |
+| `account` | string | — | Registered Signal number Pilot sends and receives as |
+| `groups` | list | `[]` | Allowed group IDs; **empty admits nothing**. `group.<base64>` or raw form |
+| `self_uuid` | string | — | Pilot's own Signal UUID; optional, skips its own traffic |
+| `approvers` | list | `[]` | Signal UUIDs allowed to decide approval polls (empty = any group member) |
+| `styled_text` | bool | `false` | Send `text_mode: styled` so markdown renders as Signal styles |
+| `max_message_length` | int | `0` | Chunking threshold; `0` uses the SDK default of 2000 characters |
+
+See the [Signal integration guide](/integrations/signal) for setup and troubleshooting.
 
 ### Plane
 
