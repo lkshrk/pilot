@@ -21,7 +21,7 @@ docker run -d --name signal-api \
 ```
 
 <Callout type="warning">
-`MODE=native` and `MODE=normal` do not serve the `/v1/receive/{account}` stream Pilot subscribes to. Without `json-rpc` Pilot connects, sends fine, and never receives a single message.
+`MODE=native` and `MODE=normal` do not serve the `/v1/receive/{account}` stream Pilot subscribes to — Pilot connects, sends fine, and never receives a single message. `MODE=json-rpc-native` serves the same stream and works too.
 </Callout>
 
 ### 2. Register or Link the Account
@@ -53,8 +53,11 @@ The `id` field comes back in the `group.<base64>` form. Pilot accepts either tha
 
 ### 4. Find the Account's Own UUID
 
+The REST API has no endpoint that returns an account's UUID. signal-cli keeps it in the account store on the volume mounted in step 1:
+
 ```bash
-curl http://localhost:8080/v1/accounts/+15551234567 | jq .uuid
+jq -r '.accounts[] | select(.number == "+15551234567") | .uuid' \
+  ~/.local/share/signal-api/data/accounts.json
 ```
 
 This is `self_uuid`. It is optional but strongly recommended — see [Self-Filtering](#self-filtering).
@@ -101,7 +104,7 @@ pilot start --github
 
 Signal has no per-channel permission model to lean on, so **membership of an allowed group is what grants a person access**. Anyone in a listed group can send Pilot tasks and — unless `approvers` narrows it — decide approval polls.
 
-That makes `groups` an authorization boundary, not a noise filter, and it is why an empty list admits nothing rather than everything.
+That makes `groups` an authorization boundary, not a noise filter, and it is why an empty list admits nothing rather than everything. Direct messages to Pilot's number are never accepted, whatever `groups` contains — there is no group to authorize against.
 
 <Callout type="warning">
 This is the opposite of Discord's `allowed_channels`, where empty means *all channels*. If you carry a Discord config's habits over, an empty `groups` will look like a broken adapter — it is Pilot refusing to listen without a boundary configured.
@@ -123,7 +126,7 @@ When Pilot needs a decision it posts a **native Signal poll** whose options are 
 - With a non-empty `approvers` list, a vote from any other UUID is refused: the voter is told once ("Vote ignored — not an approver.") and the poll stays open so a real approver can still decide it.
 
 <Callout type="warning">
-`approvers` is matched by **Signal UUID**, not by phone number or display name. A list of numbers matches nobody and locks every human out of every approval. Read the UUIDs off `GET /v1/accounts` or Pilot's logs before filling it in.
+`approvers` is matched by **Signal UUID**, not by phone number or display name. A list of numbers matches nobody and locks every human out of every approval. Get each member's UUID from `GET /v1/contacts/{account}?all_recipients=true`, which returns a `number`/`uuid` pair per known recipient — someone the account has never exchanged a message with may not be listed yet.
 </Callout>
 
 ### Styled Text
@@ -165,14 +168,14 @@ Messages beginning with `/` are parsed as commands; everything else is treated a
 
 ### Nothing Is Received
 
-1. Confirm the service runs with `MODE=json-rpc` — other modes have no receive stream
+1. Confirm the service runs with `MODE=json-rpc` (or `json-rpc-native`) — `native` and `normal` have no receive stream
 2. Confirm `groups` is non-empty; an empty allowlist admits nothing
 3. Confirm the group ID matches one from `GET /v1/groups/{account}`
 4. Confirm Pilot's number is still a member of the group
 
 ### Pilot Replies to Itself
 
-`self_uuid` is unset or wrong. Read it from `GET /v1/accounts/{account}` and set it.
+`self_uuid` is unset or wrong. Read it out of `data/accounts.json` on the mounted volume (see [step 4](#4-find-the-accounts-own-uuid)) and set it.
 
 ### Votes Do Nothing
 

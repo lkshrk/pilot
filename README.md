@@ -104,7 +104,7 @@ pilot init
 pilot start --github              # GitHub issue polling
 pilot start --telegram            # Telegram bot
 pilot start --telegram --github   # Both
-pilot start --github              # Signal/Slack/Discord ride along when enabled in config
+pilot start --github              # Signal rides along when enabled in config
 
 # 3. Create a GitHub issue with 'pilot' label, or message your Telegram bot
 ```
@@ -375,8 +375,8 @@ pilot start -p ~/Projects/myapp      # Specify project
 pilot start --replace                # Kill existing instance first
 ```
 
-Signal, Slack and Discord have no start flag — enable them in `~/.pilot/config.yaml`
-(`adapters.signal.enabled: true`) and they start with `pilot start`.
+Slack and Discord have `--slack` and `--discord` flags. Signal has none — enable it in
+`~/.pilot/config.yaml` (`adapters.signal.enabled: true`) and it starts with `pilot start`.
 
 ### `pilot task`
 
