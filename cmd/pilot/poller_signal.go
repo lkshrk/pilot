@@ -53,6 +53,7 @@ func signalPollerRegistration() PollerRegistration {
 				Runner:          deps.Runner,
 				Projects:        config.NewProjectSource(deps.Cfg),
 				ProjectPath:     deps.ProjectPath,
+				RateLimit:       signalRateLimitToComms(signalCfg.RateLimit),
 				Bot:             signalBotCfg,
 				Store:           deps.Store,
 				TaskIDPrefix:    "SIGNAL",
@@ -70,5 +71,19 @@ func signalPollerRegistration() PollerRegistration {
 			fmt.Println("● signal bot started")
 			logging.WithComponent("start").Info("Signal bot started")
 		},
+	}
+}
+
+// signalRateLimitToComms converts signal.RateLimitConfig units to comms.RateLimitConfig.
+// signal uses per-second messages and per-minute tasks; comms uses per-minute and per-hour.
+func signalRateLimitToComms(rl *signal.RateLimitConfig) *comms.RateLimitConfig {
+	if rl == nil {
+		return nil
+	}
+	return &comms.RateLimitConfig{
+		Enabled:           true,
+		MessagesPerMinute: rl.MessagesPerSecond * 60,
+		TasksPerHour:      rl.TasksPerMinute * 60,
+		BurstSize:         comms.DefaultRateLimitConfig().BurstSize,
 	}
 }
